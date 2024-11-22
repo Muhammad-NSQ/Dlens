@@ -75,4 +75,4 @@ python directory_mapper.py --sort size
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## 📄 License
-MIT License - See [LICENSE](LICENSE) for details.
+MIT License - See [LICENSE](LICENSE.md) for details.
