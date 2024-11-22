@@ -58,6 +58,9 @@ python Dlens.py --depth 3 --filter .py
 
 # Sort by file size
 python Dlens.py --sort size
+
+# A lot more :)
+python Dlens.py --show-hidden --max-preview 1 --sort date  --output-format markdown --filter .jpg --follow-symlinks folder2 --show-details
 ```
 
 ## 📋 Command-Line Options
