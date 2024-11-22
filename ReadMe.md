@@ -32,8 +32,8 @@ pip install directory-mapper
 
 ### Or from source
 ```bash
-git clone https://github.com/yourusername/directory-mapper.git
-cd directory-mapper
+git clone https://github.com/Muhammad-NSQ/Dlens.git
+cd Dlens
 pip install -r requirements.txt
 ```
 
@@ -51,13 +51,13 @@ python directory_mapper.py /path/to/directory
 ### Advanced Options
 ```bash
 # Show hidden files, JSON output with details
-python directory_mapper.py --show-hidden --output-format json --show-details
+python Dlens.py --show-hidden --output-format json --show-details
 
 # Limit depth, filter Python files
-python directory_mapper.py --depth 3 --filter .py
+python Dlens.py --depth 3 --filter .py
 
 # Sort by file size
-python directory_mapper.py --sort size
+python Dlens.py --sort size
 ```
 
 ## 📋 Command-Line Options
