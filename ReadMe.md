@@ -42,10 +42,10 @@ pip install -r requirements.txt
 ### Basic Usage
 ```bash
 # Map current directory
-python directory_mapper.py
+python Dlens.py
 
 # Map specific directory
-python directory_mapper.py /path/to/directory
+python Dlens.py /path/to/directory
 ```
 
 ### Advanced Options
