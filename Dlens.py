@@ -10,6 +10,12 @@ from typing import List, Dict, Any, Optional, Union
 from rich.console import Console
 from rich.tree import Tree
 
+from datetime import datetime
+from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn
+from rich.panel import Panel
+from rich.table import Table
+
+
 class PlatformHandler:
     """Cross-platform directory access and information handler"""
     
@@ -77,7 +83,10 @@ class DirectoryMapper:
         sort_by: str = "name",
         follow_symlinks: bool = False,
         log_path: Optional[str] = None,
-        theme: Optional[Dict[str, Any]] = None  # Add theme parameter
+        theme: Optional[Dict[str, Any]] = None,
+        show_stats: bool = True,  # New parameter
+        show_progress: bool = True,  # New parameter
+        show_icons: bool = True,  # New parameter
     ):
         """
         Cross-platform directory mapping and visualization tool
@@ -98,6 +107,9 @@ class DirectoryMapper:
             log_path: Optional logging destination
             theme: Optional theme configuration
         """
+        # Setup console first
+        self.console = Console(color_system="auto" if color else None)
+        
         self.platform = PlatformHandler()
         self.path = self.platform.normalize_path(path)
         
@@ -113,10 +125,19 @@ class DirectoryMapper:
         self.output_format = output_format
         self.sort_by = sort_by
         self.follow_symlinks = follow_symlinks
-        self.theme = theme or {}  # Initialize theme
+        self.theme = theme or {}
         
-        # Setup console and logging
-        self.console = Console(color_system="auto" if color else None)
+        # New configuration parameters
+        self.show_stats = show_stats
+        self.show_progress = show_progress
+        self.show_icons = show_icons
+        
+        # Initialize components based on settings
+        self.stats = DirectoryStats() if show_stats else None
+        self.progress = ProgressTracker(self.console) if show_progress else None
+        self.file_icons = FileTypeIcons() if show_icons else None
+        
+        # Setup logging
         logging.basicConfig(
             filename=log_path or 'Dlens.log',
             level=logging.INFO,
@@ -167,12 +188,16 @@ class DirectoryMapper:
             return False
 
     def _scan_directory(self, dir_path: Path) -> Dict[str, List[Path]]:
-        """Scan directory with error handling and filtering"""
+        """Enhanced directory scanning with progress tracking and statistics"""
         try:
             if not self.platform.check_access(dir_path):
                 raise PermissionError(f"Access denied to {dir_path}")
                 
             entries = list(dir_path.iterdir())
+            
+            # Only update progress if enabled
+            if self.show_progress and self.progress:
+                self.progress.update(len(entries))
             
             dirs = []
             files = []
@@ -184,8 +209,12 @@ class DirectoryMapper:
                 try:
                     if entry.is_dir() and (self.follow_symlinks or not entry.is_symlink()):
                         dirs.append(entry)
+                        if self.show_stats and self.stats:
+                            self.stats.add_directory()
                     elif entry.is_file():
                         files.append(entry)
+                        if self.show_stats and self.stats:
+                            self.stats.add_file(entry)
                 except Exception as e:
                     logging.warning(f"Error processing entry {entry}: {str(e)}")
                     
@@ -198,7 +227,7 @@ class DirectoryMapper:
             return {'dirs': [], 'files': []}
 
     def _build_rich_tree(self) -> Tree:
-        """Build a rich tree representation with proper theme application"""
+        """Build a rich tree representation with enhanced features"""
         def add_tree_branch(parent: Tree, dir_path: Path, level: int = 0) -> None:
             if self.max_depth is not None and level >= self.max_depth:
                 return
@@ -209,55 +238,95 @@ class DirectoryMapper:
 
             current_max_preview = self.root_preview if level == 0 else self.max_preview
 
-            # Add directories with theme
+            # Add directories
             for d in dirs[:current_max_preview]:
                 try:
-                    # Get directory style from theme
-                    dir_style = self.theme.get('colors', {}).get('directory', "bold light_green")
-                    subtree = parent.add(f"[{dir_style}]{d.name}/[/]")
+                    style = "bold light_green" if self.color else ""
+                    icon = FileTypeIcons.get_icon(d) if self.show_icons else ""
+                    name = f"{icon} {d.name}/" if self.show_icons else f"{d.name}/"
+                    subtree = parent.add(f"[{style}]{name}[/]" if style else name)
                     add_tree_branch(subtree, d, level + 1)
                 except Exception as e:
                     logging.warning(f"Error adding directory {d}: {str(e)}")
 
             if len(dirs) > current_max_preview:
-                count_style = self.theme.get('colors', {}).get('subdirectory_count', "dim")
                 parent.add(
-                    f"[{count_style}](... {len(dirs) - current_max_preview} more folders)[/]"
+                    f"[dim](... {len(dirs) - current_max_preview} more folders)[/]"
+                    if self.color else
+                    f"(... {len(dirs) - current_max_preview} more folders)"
                 )
 
-            # Add files with theme
+            # Add files
             for f in files[:current_max_preview]:
                 try:
-                    file_style = self.theme.get('colors', {}).get('file', "bold yellow")
                     if self.show_details:
                         file_info = self.platform.get_file_info(f)
+                        size = SizeFormatter.format_size(file_info['size'])
                         details = (
-                            f" (size: {file_info['size']} bytes, "
+                            f" (size: {size}, "
                             f"modified: {file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
                         )
-                        display_name = f"{f.name}{details}"
+                        icon = FileTypeIcons.get_icon(f) if self.show_icons else ""
+                        display_name = f"{icon} {f.name}{details}" if self.show_icons else f"{f.name}{details}"
                     else:
-                        display_name = f.name
+                        icon = FileTypeIcons.get_icon(f) if self.show_icons else ""
+                        display_name = f"{icon} {f.name}" if self.show_icons else f"{f.name}"
 
-                    parent.add(f"[{file_style}]{display_name}[/]")
+                    style = "bold yellow" if self.color else ""
+                    parent.add(f"[{style}]{display_name}[/]" if style else display_name)
                 except Exception as e:
                     logging.warning(f"Error adding file {f}: {str(e)}")
 
             if len(files) > current_max_preview:
-                count_style = self.theme.get('colors', {}).get('subdirectory_count', "dim")
                 parent.add(
-                    f"[{count_style}](... {len(files) - current_max_preview} more files)[/]"
+                    f"[dim](... {len(files) - current_max_preview} more files)[/]"
+                    if self.color else
+                    f"(... {len(files) - current_max_preview} more files)"
                 )
 
         try:
-            # Get root style from theme
-            root_style = self.theme.get('colors', {}).get('root', "bold red")
-            root_tree = Tree(f"[{root_style}]{self.path.name}/[/]")
+            style = "bold red" if self.color else ""
+            root_icon = FileTypeIcons.get_icon(self.path) if self.show_icons else ""
+            root_name = f"{root_icon} {self.path.name}/" if self.show_icons else f"{self.path.name}/"
+            root_tree = Tree(
+                f"[{style}]{root_name}[/]" if style else root_name
+            )
             add_tree_branch(root_tree, self.path)
             return root_tree
         except Exception as e:
             logging.error(f"Error building tree: {str(e)}")
             return Tree("Error: Unable to build directory tree")
+        
+    def _display_statistics(self):
+        """Display collected directory statistics"""
+        stats = self.stats.get_summary()
+        
+        # Create statistics table
+        table = Table(title="Directory Statistics", show_header=True)
+        table.add_column("Metric", style="bold cyan")
+        table.add_column("Value")
+        
+        # Add basic stats
+        table.add_row("Total Files", str(stats['total_files']))
+        table.add_row("Total Directories", str(stats['total_dirs']))
+        table.add_row("Total Size", stats['total_size'])
+        
+        # Add file type distribution
+        file_types = "\n".join(f"{ext or 'no ext'}: {count}" 
+                              for ext, count in list(stats['file_types'].items())[:10])
+        table.add_row("File Types (top 10)", file_types)
+        
+        # Add largest files
+        largest_files = "\n".join(f"{path.split('/')[-1]}: {size}" 
+                                 for path, size in stats['largest_files'][:5])
+        table.add_row("Largest Files (top 5)", largest_files)
+        
+        # Add newest files
+        newest_files = "\n".join(f"{path.split('/')[-1]}: {date}" 
+                                for path, date in stats['newest_files'][:5])
+        table.add_row("Recently Modified (top 5)", newest_files)
+        
+        return table
 
     def _build_json_tree(self, dir_path: Path) -> Dict[str, Any]:
         """Generate a detailed JSON representation of the directory"""
@@ -329,17 +398,77 @@ class DirectoryMapper:
         return md_output
 
     def export(self) -> None:
-        """Export directory structure in specified format"""
+        """Export directory structure with statistics"""
         try:
+            # Start progress tracking if enabled
+            if self.show_progress and self.progress:
+                self.progress.start()
+            
+            # Create the main output
             if self.output_format == "text":
+                # Create a layout with tree and statistics
                 self.console.print(self._build_rich_tree())
+                
+                # Only show statistics if enabled
+                if self.show_stats and self.stats:
+                    self.console.print("\n")
+                    self.console.print(self._display_statistics())
+                
+                # Only show progress if enabled
+                if self.show_progress and self.progress:
+                    self.console.print("\n")
+                    self.console.print(f"[dim]{self.progress.get_progress()}[/]")
+                
             elif self.output_format == "json":
-                print(json.dumps(self._build_json_tree(self.path), indent=4, default=str))
+                output = {
+                    "directory_tree": self._build_json_tree(self.path)
+                }
+                
+                # Only include statistics if enabled
+                if self.show_stats and self.stats:
+                    output["statistics"] = self.stats.get_summary()
+                
+                # Only include progress if enabled
+                if self.show_progress and self.progress:
+                    output["scan_info"] = {
+                        "progress": self.progress.get_progress(),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                
+                print(json.dumps(output, indent=4, default=str))
+                
             elif self.output_format == "markdown":
-                print("\n".join(self._build_markdown_tree(self.path)))
+                md_lines = self._build_markdown_tree(self.path)
+                
+                # Only include statistics if enabled
+                if self.show_stats and self.stats:
+                    md_lines.append("\n## Directory Statistics\n")
+                    stats = self.stats.get_summary()
+                    md_lines.extend([
+                        f"- Total Files: {stats['total_files']}",
+                        f"- Total Directories: {stats['total_dirs']}",
+                        f"- Total Size: {stats['total_size']}",
+                        "\n### File Types\n",
+                        *[f"- {ext or 'no ext'}: {count}" 
+                          for ext, count in list(stats['file_types'].items())[:10]],
+                        "\n### Largest Files\n",
+                        *[f"- {path}: {size}" 
+                          for path, size in stats['largest_files'][:5]],
+                        "\n### Recently Modified\n",
+                        *[f"- {path}: {date}" 
+                          for path, date in stats['newest_files'][:5]]
+                    ])
+                
+                # Only include progress if enabled
+                if self.show_progress and self.progress:
+                    md_lines.append(f"\n*Scan completed: {self.progress.get_progress()}*")
+                
+                print("\n".join(md_lines))
+                
         except Exception as e:
             logging.error(f"Export failed: {e}")
             print(f"Error: {e}")
+
 
     def __del__(self):
         """Cleanup resources"""
@@ -613,6 +742,133 @@ class ThemeManager:
             Styled string or None
         """
         return self.theme['colors'].get(element_type, default)
+class FileTypeIcons:
+    """Manage file type icons for enhanced visualization"""
+    
+    ICONS = {
+        # Programming
+        '.py': '🐍', '.js': '📜', '.java': '☕', '.cpp': '⚙️', '.cs': '🎮',
+        # Documents
+        '.pdf': '📕', '.doc': '📘', '.docx': '📘', '.txt': '📝', '.md': '📋',
+        # Images
+        '.jpg': '🖼️', '.png': '🖼️', '.gif': '🎨', '.svg': '🎨',
+        # Archives
+        '.zip': '📦', '.tar': '📦', '.gz': '📦',
+        # Data
+        '.json': '📊', '.xml': '📊', '.csv': '📈', '.sql': '💾',
+        # Default
+        'default': '📄',
+        'directory': '📁',
+        'symlink': '🔗',
+        'error': '⚠️'
+    }
+    
+    @classmethod
+    def get_icon(cls, path: Path) -> str:
+        """Get appropriate icon for file type"""
+        if path.is_dir():
+            return cls.ICONS['directory']
+        if path.is_symlink():
+            return cls.ICONS['symlink']
+        return cls.ICONS.get(path.suffix.lower(), cls.ICONS['default'])
+
+# Improvement 2: Add size formatting utility
+class SizeFormatter:
+    """Format file sizes in human-readable format"""
+    
+    UNITS = ['B', 'KB', 'MB', 'GB', 'TB']
+    
+    @staticmethod
+    def format_size(size_in_bytes: int) -> str:
+        """Convert bytes to human readable format"""
+        if size_in_bytes == 0:
+            return "0B"
+            
+        size_index = 0
+        size_float = float(size_in_bytes)
+        
+        while size_float >= 1024 and size_index < len(SizeFormatter.UNITS) - 1:
+            size_float /= 1024
+            size_index += 1
+            
+        return f"{size_float:.1f}{SizeFormatter.UNITS[size_index]}"
+
+# Improvement 3: Add file statistics collector
+class DirectoryStats:
+    """Collect and analyze directory statistics"""
+    
+    def __init__(self):
+        self.total_files = 0
+        self.total_dirs = 0
+        self.total_size = 0
+        self.file_types = {}
+        self.largest_files = []
+        self.newest_files = []
+        
+    def add_file(self, file_path: Path):
+        """Process a file for statistics"""
+        try:
+            stat = file_path.stat()
+            self.total_files += 1
+            self.total_size += stat.st_size
+            
+            # Track file types
+            ext = file_path.suffix.lower()
+            self.file_types[ext] = self.file_types.get(ext, 0) + 1
+            
+            # Track largest files (keep top 10)
+            self.largest_files.append((file_path, stat.st_size))
+            self.largest_files.sort(key=lambda x: x[1], reverse=True)
+            self.largest_files = self.largest_files[:10]
+            
+            # Track newest files (keep top 10)
+            self.newest_files.append((file_path, stat.st_mtime))
+            self.newest_files.sort(key=lambda x: x[1], reverse=True)
+            self.newest_files = self.newest_files[:10]
+            
+        except Exception:
+            pass
+            
+    def add_directory(self):
+        """Count directories"""
+        self.total_dirs += 1
+        
+    def get_summary(self) -> Dict[str, Any]:
+        """Get statistical summary"""
+        return {
+            'total_files': self.total_files,
+            'total_dirs': self.total_dirs,
+            'total_size': SizeFormatter.format_size(self.total_size),
+            'file_types': dict(sorted(self.file_types.items(), key=lambda x: x[1], reverse=True)),
+            'largest_files': [(str(p), SizeFormatter.format_size(s)) for p, s in self.largest_files],
+            'newest_files': [(str(p), datetime.fromtimestamp(t).strftime('%Y-%m-%d %H:%M:%S')) 
+                           for p, t in self.newest_files]
+        }
+
+# Improvement 4: Add progress tracking for large directories
+class ProgressTracker:
+    """Track and display progress for large directory scans"""
+    
+    def __init__(self, console: Console):
+        self.console = console
+        self.total_items = 0
+        self.processed_items = 0
+        self.start_time = None
+        
+    def start(self):
+        """Start progress tracking"""
+        self.start_time = datetime.now()
+        
+    def update(self, items_found: int = 1):
+        """Update progress count"""
+        self.processed_items += items_found
+        
+    def get_progress(self) -> str:
+        """Get progress status message"""
+        elapsed = datetime.now() - self.start_time
+        items_per_sec = self.processed_items / elapsed.total_seconds() if elapsed.total_seconds() > 0 else 0
+        return f"Processed {self.processed_items:,} items ({items_per_sec:.1f} items/sec)"
+
 
 def main():
     parser = argparse.ArgumentParser(description="Enhanced Directory Mapping Tool")
@@ -704,6 +960,21 @@ def main():
         type=str,
         help="Path to a new theme JSON file to add to themes"
     )
+    parser.add_argument(
+        "--no-stats",
+        action="store_true",
+        help="Disable statistics collection and display"
+    )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable progress tracking"
+    )
+    parser.add_argument(
+        "--no-icons",
+        action="store_true",
+        help="Disable file type icons"
+    )
 
     args = parser.parse_args()
     
@@ -756,7 +1027,10 @@ def main():
         sort_by=args.sort,
         follow_symlinks=args.follow_symlinks,
         log_path=args.log,
-        theme=theme
+        theme=theme,
+        show_stats=not args.no_stats,
+        show_progress=not args.no_progress,
+        show_icons=not args.no_icons
     )
     
     mapper.export()
