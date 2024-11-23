@@ -76,7 +76,8 @@ class DirectoryMapper:
         output_format: str = "text",
         sort_by: str = "name",
         follow_symlinks: bool = False,
-        log_path: Optional[str] = None
+        log_path: Optional[str] = None,
+        theme: Optional[Dict[str, Any]] = None  # Add theme parameter
     ):
         """
         Cross-platform directory mapping and visualization tool
@@ -95,6 +96,7 @@ class DirectoryMapper:
             sort_by: Sort entries by name/size/date
             follow_symlinks: Traverse symbolic links
             log_path: Optional logging destination
+            theme: Optional theme configuration
         """
         self.platform = PlatformHandler()
         self.path = self.platform.normalize_path(path)
@@ -111,11 +113,12 @@ class DirectoryMapper:
         self.output_format = output_format
         self.sort_by = sort_by
         self.follow_symlinks = follow_symlinks
+        self.theme = theme or {}  # Initialize theme
         
         # Setup console and logging
         self.console = Console(color_system="auto" if color else None)
         logging.basicConfig(
-            filename=log_path or 'directory_mapper.log',
+            filename=log_path or 'Dlens.log',
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s: %(message)s'
         )
@@ -124,6 +127,7 @@ class DirectoryMapper:
         
         # Initialize cache
         self.cache = {}
+
         
     def _get_entry_sort_key(self, entry: Path) -> Any:
         """Get sorting key for directory entry with caching"""
@@ -194,7 +198,7 @@ class DirectoryMapper:
             return {'dirs': [], 'files': []}
 
     def _build_rich_tree(self) -> Tree:
-        """Build a rich tree representation with enhanced features"""
+        """Build a rich tree representation with proper theme application"""
         def add_tree_branch(parent: Tree, dir_path: Path, level: int = 0) -> None:
             if self.max_depth is not None and level >= self.max_depth:
                 return
@@ -205,25 +209,26 @@ class DirectoryMapper:
 
             current_max_preview = self.root_preview if level == 0 else self.max_preview
 
-            # Add directories
+            # Add directories with theme
             for d in dirs[:current_max_preview]:
                 try:
-                    style = "bold light_green" if self.color else ""
-                    subtree = parent.add(f"[{style}]{d.name}/[/]" if style else f"{d.name}/")
+                    # Get directory style from theme
+                    dir_style = self.theme.get('colors', {}).get('directory', "bold light_green")
+                    subtree = parent.add(f"[{dir_style}]{d.name}/[/]")
                     add_tree_branch(subtree, d, level + 1)
                 except Exception as e:
                     logging.warning(f"Error adding directory {d}: {str(e)}")
 
             if len(dirs) > current_max_preview:
+                count_style = self.theme.get('colors', {}).get('subdirectory_count', "dim")
                 parent.add(
-                    f"[dim](... {len(dirs) - current_max_preview} more folders)[/]"
-                    if self.color else
-                    f"(... {len(dirs) - current_max_preview} more folders)"
+                    f"[{count_style}](... {len(dirs) - current_max_preview} more folders)[/]"
                 )
 
-            # Add files
+            # Add files with theme
             for f in files[:current_max_preview]:
                 try:
+                    file_style = self.theme.get('colors', {}).get('file', "bold yellow")
                     if self.show_details:
                         file_info = self.platform.get_file_info(f)
                         details = (
@@ -234,23 +239,20 @@ class DirectoryMapper:
                     else:
                         display_name = f.name
 
-                    style = "bold yellow" if self.color else ""
-                    parent.add(f"[{style}]{display_name}[/]" if style else display_name)
+                    parent.add(f"[{file_style}]{display_name}[/]")
                 except Exception as e:
                     logging.warning(f"Error adding file {f}: {str(e)}")
 
             if len(files) > current_max_preview:
+                count_style = self.theme.get('colors', {}).get('subdirectory_count', "dim")
                 parent.add(
-                    f"[dim](... {len(files) - current_max_preview} more files)[/]"
-                    if self.color else
-                    f"(... {len(files) - current_max_preview} more files)"
+                    f"[{count_style}](... {len(files) - current_max_preview} more files)[/]"
                 )
 
         try:
-            style = "bold red" if self.color else ""
-            root_tree = Tree(
-                f"[{style}]{self.path.name}/[/]" if style else f"{self.path.name}/"
-            )
+            # Get root style from theme
+            root_style = self.theme.get('colors', {}).get('root', "bold red")
+            root_tree = Tree(f"[{root_style}]{self.path.name}/[/]")
             add_tree_branch(root_tree, self.path)
             return root_tree
         except Exception as e:
@@ -345,6 +347,272 @@ class DirectoryMapper:
             self.executor.shutdown(wait=False)
         except Exception:
             pass
+        
+class ThemeManager:
+    """Advanced theme management for directory mapping"""
+    
+    def __init__(self, theme_path: Optional[str] = None):
+        """
+        Initialize theme manager with theme selection and loading
+        
+        Args:
+            theme_path: Path to custom theme file or theme name
+        """
+        self.default_config_dir = self._get_config_directory()
+        self.themes_path = os.path.join(self.default_config_dir, 'themes.json')
+        self.default_theme_path = os.path.join(self.default_config_dir, 'default_theme.json')
+        
+        # Ensure themes file exists with default themes
+        self._initialize_themes_file()
+        
+        # Determine theme to use
+        self.themes = self._load_themes()
+        self.theme = self._select_theme(theme_path)
+
+    def _get_config_directory(self) -> str:
+        """
+        Get or create a configuration directory for Dlens
+        
+        Returns:
+            Path to configuration directory
+        """
+        config_home = os.path.expanduser('~/.config/dlens')
+        os.makedirs(config_home, exist_ok=True)
+        return config_home
+
+    def _initialize_themes_file(self):
+        """
+        Create default themes.json if it doesn't exist
+        """
+        default_themes = {
+            "themes": [
+                {
+                    "name": "default",
+                    "description": "Classic color scheme with green directories and yellow files",
+                    "colors": {
+                        "directory": "bold light_green",
+                        "file": "bold yellow",
+                        "root": "bold red",
+                        "subdirectory_count": "dim"
+                    }
+                },
+                {
+                    "name": "ocean",
+                    "description": "Calming blue-based color palette",
+                    "colors": {
+                        "directory": "bold cyan",
+                        "file": "bold blue",
+                        "root": "bold bright_blue",
+                        "subdirectory_count": "dim"
+                    }
+                },
+                {
+                    "name": "forest",
+                    "description": "Natural green and brown earth tones",
+                    "colors": {
+                        "directory": "bold green",
+                        "file": "bold dark_green",
+                        "root": "bold bright_green",
+                        "subdirectory_count": "italic dim"
+                    }
+                },
+                {
+                    "name": "pastel",
+                    "description": "Soft, muted color palette",
+                    "colors": {
+                        "directory": "bold magenta",
+                        "file": "bold light_magenta",
+                        "root": "bold bright_magenta",
+                        "subdirectory_count": "dim"
+                    }
+                },
+                {
+                    "name": "monochrome",
+                    "description": "Clean, minimalist black and white theme",
+                    "colors": {
+                        "directory": "bold white",
+                        "file": "dim white",
+                        "root": "bold bright_white",
+                        "subdirectory_count": "dim"
+                    }
+                }
+            ]
+        }
+        
+        if not os.path.exists(self.themes_path):
+            with open(self.themes_path, 'w') as f:
+                json.dump(default_themes, f, indent=4)
+
+    def _load_themes(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Load themes from external JSON file
+        
+        Returns:
+            Dictionary of themes
+        """
+        try:
+            with open(self.themes_path, 'r') as f:
+                themes_data = json.load(f)
+                return {theme['name']: theme for theme in themes_data.get('themes', [])}
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logging.error(f"Error loading themes: {e}")
+            return {}
+
+    def _select_theme(self, theme_input: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Select and load a theme based on input with better error handling
+        
+        Args:
+            theme_input: Theme name or path to theme file
+        
+        Returns:
+            Selected theme dictionary
+        """
+        # Set default theme structure
+        default_theme = {
+            "name": "default",
+            "colors": {
+                "directory": "bold light_green",
+                "file": "bold yellow",
+                "root": "bold red",
+                "subdirectory_count": "dim"
+            }
+        }
+
+        # If no theme specified, return default
+        if not theme_input:
+            if os.path.exists(self.default_theme_path):
+                try:
+                    with open(self.default_theme_path, 'r') as f:
+                        default_theme_config = json.load(f)
+                        theme_name = default_theme_config.get('theme', 'default')
+                        return self.themes.get(theme_name, default_theme)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    return default_theme
+            return default_theme
+
+        # Try to load specified theme
+        if theme_input in self.themes:
+            return self.themes[theme_input]
+        
+        # Try loading from file
+        try:
+            if os.path.exists(theme_input):
+                return self._load_theme_from_file(theme_input)
+        except Exception as e:
+            logging.warning(f"Could not load theme '{theme_input}': {e}")
+        
+        # Return default theme if all else fails
+        return default_theme
+
+    def _load_theme_from_file(self, theme_path: Union[str, Path]) -> Dict[str, Any]:
+        """
+        Load theme from JSON or YAML file
+        
+        Args:
+            theme_path: Path to theme configuration file
+        
+        Returns:
+            Loaded theme dictionary
+        """
+        path = Path(theme_path)
+        
+        try:
+            with open(path, 'r') as f:
+                theme_data = json.load(f)
+                
+                # Validate theme structure
+                if not isinstance(theme_data, dict) or 'colors' not in theme_data:
+                    raise ValueError("Invalid theme format")
+                
+                # Merge with default theme, allowing partial overrides
+                default_theme = self.themes.get('default', {})
+                return {
+                    "name": theme_data.get('name', 'custom'),
+                    "description": theme_data.get('description', 'Custom theme'),
+                    "colors": {**default_theme.get('colors', {}), **theme_data.get('colors', {})}
+                }
+        except (json.JSONDecodeError) as e:
+            raise ValueError(f"Error parsing theme file: {e}")
+        except FileNotFoundError:
+            raise ValueError(f"Theme file not found: {theme_path}")
+
+    def set_default_theme(self, theme_name: str):
+        """
+        Set a default theme for future uses
+        
+        Args:
+            theme_name: Name of the theme to set as default
+        """
+        if theme_name not in self.themes:
+            raise ValueError(f"Theme '{theme_name}' not found in themes")
+        
+        # Save default theme configuration
+        with open(self.default_theme_path, 'w') as f:
+            json.dump({"theme": theme_name}, f)
+        
+        logging.info(f"Default theme set to '{theme_name}'")
+
+    def list_themes(self) -> List[Dict[str, str]]:
+        """
+        List available themes with their descriptions
+        
+        Returns:
+            List of theme information dictionaries
+        """
+        return [
+            {
+                "name": name, 
+                "description": theme.get("description", "No description")
+            } 
+            for name, theme in self.themes.items()
+        ]
+
+    def add_theme(self, theme: Dict[str, Any]):
+        """
+        Add a new theme to the themes file
+        
+        Args:
+            theme: Theme configuration dictionary
+        """
+        # Validate theme structure
+        if not isinstance(theme, dict) or 'name' not in theme or 'colors' not in theme:
+            raise ValueError("Invalid theme structure")
+        
+        # Load existing themes
+        with open(self.themes_path, 'r') as f:
+            themes_data = json.load(f)
+        
+        # Check if theme already exists
+        existing_theme = [t for t in themes_data['themes'] if t['name'] == theme['name']]
+        
+        if existing_theme:
+            # Update existing theme
+            index = themes_data['themes'].index(existing_theme[0])
+            themes_data['themes'][index] = theme
+        else:
+            # Add new theme
+            themes_data['themes'].append(theme)
+        
+        # Write back to file
+        with open(self.themes_path, 'w') as f:
+            json.dump(themes_data, f, indent=4)
+        
+        # Reload themes
+        self.themes = self._load_themes()
+
+    def get_style(self, element_type: str, default: Optional[str] = None) -> Optional[str]:
+        """
+        Get style for a specific element type
+        
+        Args:
+            element_type: Type of element (directory, file, root, etc.)
+            default: Fallback style if not defined in theme
+        
+        Returns:
+            Styled string or None
+        """
+        return self.theme['colors'].get(element_type, default)
 
 def main():
     parser = argparse.ArgumentParser(description="Enhanced Directory Mapping Tool")
@@ -418,8 +686,61 @@ def main():
         "--log", 
         help="Path to log file for tracking errors and access issues"
     )
+    parser.add_argument(
+        "--theme", 
+        help="Theme name or path to custom theme file"
+    )
+    parser.add_argument(
+        "--set-default-theme", 
+        help="Set a theme as the default for future uses"
+    )
+    parser.add_argument(
+        "--list-themes", 
+        action="store_true",
+        help="List available predefined themes"
+    )
+    parser.add_argument(
+        "--add-theme", 
+        type=str,
+        help="Path to a new theme JSON file to add to themes"
+    )
 
     args = parser.parse_args()
+    
+    # Initialize theme manager
+    theme_manager = ThemeManager()
+    
+    # Handle theme-related actions
+    if args.set_default_theme:
+        try:
+            theme_manager.set_default_theme(args.set_default_theme)
+            print(f"Default theme set to '{args.set_default_theme}'")
+            return
+        except ValueError as e:
+            print(f"Error: {e}")
+            return
+
+    if args.list_themes:
+        print("Available Themes:")
+        for theme in theme_manager.list_themes():
+            print(f"- {theme['name']}: {theme['description']}")
+        return
+
+    if args.add_theme:
+        try:
+            with open(args.add_theme, 'r') as f:
+                new_theme = json.load(f)
+            theme_manager.add_theme(new_theme)
+            print(f"Theme '{new_theme['name']}' added successfully.")
+            return
+        except Exception as e:
+            print(f"Error adding theme: {e}")
+            return
+
+    # Get theme configuration if specified
+    theme = None
+    if args.theme:
+        theme = theme_manager._select_theme(args.theme)
 
     mapper = DirectoryMapper(
         path=args.path,
@@ -434,7 +755,8 @@ def main():
         output_format=args.output_format,
         sort_by=args.sort,
         follow_symlinks=args.follow_symlinks,
-        log_path=args.log
+        log_path=args.log,
+        theme=theme
     )
     
     mapper.export()
