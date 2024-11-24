@@ -14,6 +14,8 @@ from datetime import datetime
 from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn
 from rich.panel import Panel
 from rich.table import Table
+from pathlib import Path
+
 
 
 class PlatformHandler:
@@ -745,33 +747,36 @@ class ThemeManager:
 class FileTypeIcons:
     """Manage file type icons for enhanced visualization"""
     
-    ICONS = {
-        # Programming
-        '.py': '🐍', '.js': '📜', '.java': '☕', '.cpp': '⚙️', '.cs': '🎮',
-        # Documents
-        '.pdf': '📕', '.doc': '📘', '.docx': '📘', '.txt': '📝', '.md': '📋',
-        # Images
-        '.jpg': '🖼️', '.png': '🖼️', '.gif': '🎨', '.svg': '🎨',
-        # Archives
-        '.zip': '📦', '.tar': '📦', '.gz': '📦',
-        # Data
-        '.json': '📊', '.xml': '📊', '.csv': '📈', '.sql': '💾',
-        # Default
-        'default': '📄',
-        'directory': '📁',
-        'symlink': '🔗',
-        'error': '⚠️'
-    }
+    _icons = None
+    
+    @classmethod
+    def load_icons(cls, json_path: Union[str, Path] = "icons.json"):
+        """Load icons from JSON file"""
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Combine both dictionaries for internal usage
+                cls._icons = {
+                    **data['file_types'],
+                    **data['special']
+                }
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Icons configuration file not found: {json_path}")
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid JSON format in file: {json_path}")
     
     @classmethod
     def get_icon(cls, path: Path) -> str:
         """Get appropriate icon for file type"""
+        if cls._icons is None:
+            cls.load_icons()
+            
         if path.is_dir():
-            return cls.ICONS['directory']
+            return cls._icons['directory']
         if path.is_symlink():
-            return cls.ICONS['symlink']
-        return cls.ICONS.get(path.suffix.lower(), cls.ICONS['default'])
-
+            return cls._icons['symlink']
+        return cls._icons.get(path.suffix.lower(), cls._icons['default'])
+    
 # Improvement 2: Add size formatting utility
 class SizeFormatter:
     """Format file sizes in human-readable format"""
@@ -980,6 +985,8 @@ def main():
     
     # Initialize theme manager
     theme_manager = ThemeManager()
+    
+    FileTypeIcons.load_icons()
     
     # Handle theme-related actions
     if args.set_default_theme:
