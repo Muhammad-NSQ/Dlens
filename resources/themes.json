@@ -1,0 +1,76 @@
+{
+    "themes": [
+        {
+            "name": "default",
+            "description": "Classic color scheme with green directories and yellow files",
+            "colors": {
+                "directory": "bold light_green",
+                "file": "bold yellow",
+                "root": "bold red",
+                "details": "dim cyan",
+                "more_items": "dim",
+                "subdirectory_count": "dim"
+            }
+        },
+        {
+            "name": "ocean",
+            "description": "Calming blue-based color palette",
+            "colors": {
+                "directory": "bold blue",
+                "file": "bold cyan",
+                "root": "bold bright_blue",
+                "details": "dim bright_cyan",
+                "more_items": "dim",
+                "subdirectory_count": "dim"
+            }
+        },
+        {
+            "name": "forest",
+            "description": "Natural green and brown earth tones",
+            "colors": {
+                "directory": "bold green",
+                "file": "bold dark_green",
+                "root": "bold bright_green",
+                "details": "dim green",
+                "more_items": "dim",
+                "subdirectory_count": "italic dim"
+            }
+        },
+        {
+            "name": "pastel",
+            "description": "Soft, muted color palette",
+            "colors": {
+                "directory": "bold magenta",
+                "file": "bold bright_magenta",
+                "root": "bold bright_magenta",
+                "details": "dim magenta",
+                "more_items": "magenta",
+                "subdirectory_count": "dim"
+            }
+        },
+        {
+            "name": "monochrome",
+            "description": "Clean, minimalist black and white theme",
+            "colors": {
+                "directory": "bold white",
+                "file": "dim white",
+                "root": "bold bright_white",
+                "details": "dim white",
+                "more_items": "dim",
+                "subdirectory_count": "dim"
+            }
+        },
+        {
+            "name": "dark",
+            "description": "Dark theme with bold colors on dark background",
+            "colors": {
+                "directory": "bold green",
+                "file": "bold blue",
+                "root": "bold magenta",
+                "details": "dim white",
+                "more_items": "dim",
+                "subdirectory_count": "dim"
+            }
+        }
+    ]
+}
