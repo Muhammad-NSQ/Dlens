@@ -38,7 +38,7 @@ class DirectoryMapper:
         follow_symlinks: bool = False,
         log_path: Optional[str] = None,
         theme: Optional[Dict[str, Any]] = None,
-        show_stats: bool = True,  # New parameter
+        show_stats: bool = False,  # New parameter
         show_progress: bool = True,  # New parameter
         show_icons: bool = True,  # New parameter
     ):
