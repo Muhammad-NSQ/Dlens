@@ -8,23 +8,53 @@ class ConfigManager:
     Manages configuration for DLens, supporting persistent storage and manipulation.
     """
     DEFAULT_CONFIG = {
-        # DirectoryMapper default configurations
-        'max_preview': 3,
-        'root_preview': 5,
-        'show_hidden': False,
-        'max_depth': None,
-        'color': True,
-        'filter': [],
-        'exclude': [],
-        'show_details': False,
-        'output_format': 'text',
-        'sort_by': 'name',
-        'follow_symlinks': False,
-        'log_path': None,
-        'theme': 'default',
-        'show_stats': False,
-        'progress': True,
-        'icons': True
+        # DirectoryMapper core settings
+        'max_preview': 3,            # Maximum items to show per directory
+        'root_preview': 5,           # Maximum items to show in root directory
+        'max_depth': None,           # Maximum directory traversal depth (None for unlimited)
+        'sort_by': 'name',          # Sort criteria: 'name', 'size', or 'date'
+        
+        # File filtering options
+        'show_hidden': False,        # Show hidden files and directories
+        'filter': [],               # List of file extensions to include (empty = all)
+        'exclude': [],              # List of file extensions to exclude
+        'follow_symlinks': False,    # Follow symbolic links during traversal
+        
+        # Display settings
+        'show_details': False,       # Show file/directory details (size, date)
+        'output_format': 'text',     # Output format: 'text', 'json', or 'markdown'
+        'color': True,              # Enable colored output
+        'icons': True,              # Show file and directory icons
+        'theme': 'default',         # UI theme name
+        'theme_path': None,         # Custom theme file path
+        
+        # Feature toggles
+        'show_stats': False,         # Show directory statistics
+        'progress': True,           # Show progress during mapping
+        
+        # Search-specific settings
+        'parallel': True,           # Enable parallel processing for search
+        'case_sensitive': False,    # Case-sensitive search
+        'max_results': None,        # Maximum search results (None for unlimited)
+        'search_depth': None,       # Maximum search depth (None for unlimited)
+        
+        # Export settings
+        'output_file': None,        # Output file path for exports
+        'template': 'light',        # HTML template style ('light' or 'dark')
+        'log_path': None,          # Log file path
+        
+        # Performance settings
+        'chunk_size': 1000,        # Chunk size for parallel processing
+        'max_workers': None,        # Maximum worker threads (None = CPU count)
+        
+        # UI customization
+        'progress_style': 'bar',    # Progress display style: 'bar' or 'spinner'
+        'date_format': '%Y-%m-%d %H:%M:%S',  # Date format for file details
+        
+        # Advanced settings
+        'follow_mounts': False,     # Follow mounted filesystems
+        'skip_permission_errors': True,  # Continue on permission errors
+        'memory_limit': None,       # Memory limit in MB (None for unlimited)
     }
 
     @classmethod

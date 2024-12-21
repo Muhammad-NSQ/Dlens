@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directory Map</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+    <style>
+        /* Theme Variables */
+        html[data-theme="light"] {
+            --bg-color: #f5f5f5;
+            --container-bg: white;
+            --text-color: #333;
+            --header-bg: #2c3e50;
+            --header-color: white;
+            --text-secondary: #666;
+            --accent: #2c3e50;
+            --border: #e9ecef;
+            --hover: #f8f9fa;
+            --card-bg: #f8f9fa;
+            --theme-toggle-bg: #2c3e50;
+            --theme-toggle-color: white;
+            --box-shadow: rgba(0, 0, 0, 0.1);
+            --search-bg: white;
+            --scrollbar-thumb: #ccc;
+            --scrollbar-track: #f1f1f1;
+        }
+
+        html[data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --container-bg: #2d2d2d;
+            --text-color: #e0e0e0;
+            --header-bg: #8e44ad;
+            --header-color: white;
+            --text-secondary: #888;
+            --accent: #9b59b6;
+            --border: #3d3d3d;
+            --hover: #363636;
+            --card-bg: #363636;
+            --theme-toggle-bg: #8e44ad;
+            --theme-toggle-color: white;
+            --box-shadow: rgba(0, 0, 0, 0.3);
+            --search-bg: #2d2d2d;
+            --scrollbar-thumb: #666;
+            --scrollbar-track: #2d2d2d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            transition: background-color 0.3s ease, 
+                        color 0.3s ease, 
+                        border-color 0.3s ease, 
+                        box-shadow 0.3s ease;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.5;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        /* Layout */
+        .layout {
+            display: grid;
+            grid-template-columns: 250px 1fr 300px;
+            gap: 20px;
+            max-width: 1800px;
+            margin: 0 auto;
+            min-height: calc(100vh - 40px);
+        }
+
+        /* Sidebar Base */
+        .sidebar {
+            background: var(--container-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--box-shadow);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 40px);
+            position: sticky;
+            top: 20px;
+        }
+
+        .sidebar-header {
+            background: var(--header-bg);
+            color: var(--header-color);
+            padding: 1rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-content {
+            padding: 1rem;
+            overflow-y: auto;
+            flex: 1;
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+
+        .sidebar-content::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .sidebar-content::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+            border-radius: 4px;
+        }
+
+        .sidebar-content::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 4px;
+            border: 2px solid var(--scrollbar-track);
+            background-clip: padding-box;
+        }
+
+        /* Left Sidebar Navigation */
+        .quick-nav {
+            list-style: none;
+        }
+
+        .quick-nav-item {
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-color);
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .quick-nav-item:hover {
+            background: var(--hover);
+            transform: translateX(4px);
+        }
+
+        .quick-nav-item.active {
+            background: var(--header-bg);
+            color: var(--header-color);
+        }
+
+        .quick-nav-item i {
+            width: 1.25rem;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            background: var(--container-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--box-shadow);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: calc(100vh - 40px);
+        }
+
+        .main-header {
+            background: var(--header-bg);
+            color: var(--header-color);
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 64px;
+        }
+
+        .main-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        /* Theme Toggle Button */
+        .theme-toggle {
+            background: var(--theme-toggle-bg);
+            border: none;
+            border-radius: 20px;
+            padding: 8px 16px;
+            color: var(--theme-toggle-color);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: transform 0.2s ease, background-color 0.3s ease;
+            box-shadow: 0 2px 4px var(--box-shadow);
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+
+        .theme-toggle .icon {
+            font-size: 16px;
+            transition: transform 0.5s ease;
+        }
+
+        html[data-theme="dark"] .theme-toggle .icon {
+            transform: rotate(360deg);
+        }
+
+        /* Search Box */
+        .search-box {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--search-bg);
+            color: var(--text-color);
+            margin-bottom: 1.5rem;
+            font-size: 14px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-transparent);
+        }
+
+        /* Directory Tree */
+        .directory-tree {
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 1rem;
+            box-shadow: 0 1px 3px var(--box-shadow);
+        }
+
+        .tree-item {
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: background-color 0.2s ease;
+        }
+
+        .tree-item:hover {
+            background: var(--hover);
+        }
+
+        .tree-item i {
+            color: var(--accent);
+            width: 1.25rem;
+            text-align: center;
+        }
+
+        .tree-content {
+            padding-left: 2rem;
+        }
+
+        /* Details Panel */
+        .detail-item {
+            margin-bottom: 1.5rem;
+            background: var(--card-bg);
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+
+        .detail-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            color: var(--text-color);
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        /* Stats Grid in Details */
+        .stats-grid {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .stat-item {
+            background: var(--container-bg);
+            padding: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        /* Mobile Menu Button */
+        .mobile-menu {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--header-color);
+            font-size: 1.5rem;
+            padding: 0.5rem;
+            cursor: pointer;
+        }
+
+        /* View Sections */
+        .view-section {
+            display: none;
+        }
+
+        .view-section.active {
+            display: block;
+        }
+
+        /* Cards for Different Views */
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px var(--box-shadow);
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: var(--text-color);
+        }
+
+        /* File Types Grid */
+        .file-type-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .file-type-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--container-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        /* Large Files List */
+        .large-files-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .large-file-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--container-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        /* Recent Files List */
+        .recent-files-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .recent-file-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--container-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .layout {
+                grid-template-columns: 250px 1fr;
+            }
+
+            .right-sidebar {
+                display: none;
+                position: fixed;
+                right: 0;
+                top: 0;
+                bottom: 0;
+                width: 300px;
+                z-index: 1000;
+            }
+
+            .right-sidebar.active {
+                display: block;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .layout {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .left-sidebar {
+                display: none;
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 1000;
+            }
+
+            .left-sidebar.active {
+                display: block;
+            }
+
+            .mobile-menu {
+                display: block;
+            }
+
+            .main-header {
+                padding: 0.75rem;
+            }
+
+            .theme-toggle {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .highlight {
+            background: rgba(142, 68, 173, 0.1);
+            border-radius: 4px;
+        }
+
+        /* Overlay for mobile sidebar */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar-overlay" onclick="closeSidebars()"></div>
+    <div class="layout">
+        <!-- Left Sidebar -->
+        <aside class="sidebar left-sidebar">
+            <div class="sidebar-header">
+                Quick Navigation
+            </div>
+            <div class="sidebar-content">
+                <ul class="quick-nav">
+                    <li class="quick-nav-item active" onclick="switchView('directory')">
+                        <i class="fas fa-folder"></i>
+                        Directory Structure
+                    </li>
+                    <li class="quick-nav-item" onclick="switchView('file-types')">
+                        <i class="fas fa-file-alt"></i>
+                        File Types
+                    </li>
+                    <li class="quick-nav-item" onclick="switchView('largest-files')">
+                        <i class="fas fa-weight-hanging"></i>
+                        Largest Files
+                    </li>
+                    <li class="quick-nav-item" onclick="switchView('recent')">
+                        <i class="fas fa-clock"></i>
+                        Recent Changes
+                    </li>
+                    <li class="quick-nav-item" onclick="switchView('stats')">
+                        <i class="fas fa-chart-bar"></i>
+                        Statistics
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="main-header">
+                <button class="mobile-menu" onclick="toggleLeftSidebar()">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1>Directory Map</h1>
+                <button class="theme-toggle" onclick="toggleTheme()">
+                    <span class="icon">☀️</span>
+                    <span class="text">Light Mode</span>
+                </button>
+            </div>
+            <div class="main-body">
+                <input type="text" 
+                       class="search-box" 
+                       placeholder="Search files and directories..." 
+                       oninput="filterItems(this.value)">
+                
+                <!-- Directory Structure View -->
+                <div class="view-section active" id="directory-view">
+                    <div class="directory-tree">
+                        {{directory_content}}
+                    </div>
+                </div>
+
+                <!-- File Types View -->
+                <div class="view-section" id="file-types-view">
+                    <div class="card">
+                        <h3>File Types Distribution</h3>
+                        <div class="file-type-grid">
+                            {% for ext, count in stats.file_types.items() %}
+                            <div class="file-type-item">
+                                <span class="ext">{{ext or 'no ext'}}</span>
+                                <span class="count">{{count}} files</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Largest Files View -->
+                <div class="view-section" id="largest-files-view">
+                    <div class="card">
+                        <h3>Largest Files</h3>
+                        <div class="large-files-list">
+                            {% for path, size in stats.largest_files %}
+                            <div class="large-file-item">
+                                <span class="file-name">{{path.split('/')[-1]}}</span>
+                                <span class="file-size">{{size}}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Changes View -->
+                <div class="view-section" id="recent-view">
+                    <div class="card">
+                        <h3>Recent Changes</h3>
+                        <div class="recent-files-list">
+                            {% for file in stats.recent_files %}
+                            <div class="recent-file-item">
+                                <span class="file-name">{{file.name}}</span>
+                                <span class="modified-date">{{file.modified}}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistics View -->
+                <div class="view-section" id="stats-view">
+                    <div class="card">
+                        <h3>Directory Statistics</h3>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Total Files</span>
+                                <span class="stat-value">{{stats.total_files}}</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Total Size</span>
+                                <span class="stat-value">{{stats.total_size}}</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Total Directories</span>
+                                <span class="stat-value">{{stats.total_dirs}}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar -->
+        <aside class="sidebar right-sidebar">
+            <div class="sidebar-header">
+                Details
+            </div>
+            <div class="sidebar-content">
+                {% if stats and stats.total_files > 0 %}
+                <div class="detail-item">
+                    <div class="detail-label">Overview</div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="detail-label">Total Files</div>
+                            <div class="detail-value">{{stats.total_files}}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="detail-label">Total Size</div>
+                            <div class="detail-value">{{stats.total_size}}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="detail-label">Directories</div>
+                            <div class="detail-value">{{stats.total_dirs}}</div>
+                        </div>
+                    </div>
+                </div>
+
+                {% if stats.file_types %}
+                <div class="detail-item">
+                    <div class="detail-label">File Types</div>
+                    <div class="stats-grid">
+                        {% for ext, count in stats.file_types.items() %}
+                        <div class="stat-item">
+                            <div class="detail-value">{{count}}</div>
+                            <div class="detail-label">{{ext or 'no ext'}}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if stats.largest_files %}
+                <div class="detail-item">
+                    <div class="detail-label">Largest Files</div>
+                    <div class="stats-grid">
+                        {% for path, size in stats.largest_files[:5] %}
+                        <div class="stat-item">
+                            <div class="detail-value">{{size}}</div>
+                            <div class="detail-label">{{path.split('/')[-1]}}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // Theme Management
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            const icon = document.querySelector('.theme-toggle .icon');
+            const text = document.querySelector('.theme-toggle .text');
+            
+            html.setAttribute('data-theme', savedTheme);
+            
+            if (savedTheme === 'dark') {
+                icon.textContent = '🌙';
+                text.textContent = 'Dark Mode';
+            } else {
+                icon.textContent = '☀️';
+                text.textContent = 'Light Mode';
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.querySelector('.theme-toggle .icon');
+            const text = document.querySelector('.theme-toggle .text');
+            
+            const newTheme = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', newTheme);
+            
+            if (newTheme === 'dark') {
+                icon.textContent = '🌙';
+                text.textContent = 'Dark Mode';
+            } else {
+                icon.textContent = '☀️';
+                text.textContent = 'Light Mode';
+            }
+
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // Directory Tree Management
+        function toggleDirectory(element) {
+            const content = element.nextElementSibling;
+            if (content) {
+                content.classList.toggle('hidden');
+                const icon = element.querySelector('.fa-chevron-right, .fa-chevron-down');
+                icon.classList.toggle('fa-chevron-right');
+                icon.classList.toggle('fa-chevron-down');
+            }
+        }
+
+        // Search Functionality
+        function filterItems(query) {
+            if (!query) {
+                document.querySelectorAll('.tree-item').forEach(item => {
+                    item.style.display = '';
+                    item.classList.remove('highlight');
+                });
+                document.querySelectorAll('.tree-content').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                return;
+            }
+
+            const lowerQuery = query.toLowerCase();
+            document.querySelectorAll('.tree-item').forEach(item => {
+                const text = item.textContent.toLowerCase();
+                const matches = text.includes(lowerQuery);
+                item.style.display = matches ? '' : 'none';
+                item.classList.toggle('highlight', matches);
+                
+                if (matches) {
+                    let parent = item.parentElement;
+                    while (parent && parent.classList.contains('tree-content')) {
+                        parent.classList.remove('hidden');
+                        parent = parent.parentElement;
+                    }
+                }
+            });
+        }
+
+        // View Management
+        function switchView(view) {
+            // Hide all view sections
+            document.querySelectorAll('.view-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            // Show selected view section
+            const selectedView = document.getElementById(`${view}-view`);
+            if (selectedView) {
+                selectedView.classList.add('active');
+            }
+
+            // Update active state in navigation
+            document.querySelectorAll('.quick-nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // Handle search box visibility
+            const searchBox = document.querySelector('.search-box');
+            if (view === 'directory') {
+                searchBox.style.display = 'block';
+            } else {
+                searchBox.style.display = 'none';
+            }
+
+            // Close mobile sidebar after selection
+            if (window.innerWidth <= 768) {
+                closeSidebars();
+            }
+        }
+
+        // Sidebar Management
+        function toggleLeftSidebar() {
+            const sidebar = document.querySelector('.left-sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+
+        function toggleRightSidebar() {
+            const sidebar = document.querySelector('.right-sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+
+        function closeSidebars() {
+            const sidebars = document.querySelectorAll('.sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            sidebars.forEach(sidebar => sidebar.classList.remove('active'));
+            overlay.classList.remove('active');
+        }
+
+        // Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeTheme();
+
+            // Handle escape key for closing sidebars
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closeSidebars();
+                }
+            });
+
+            // Handle resize events
+            window.addEventListener('resize', () => {
+                if (window.innerWidth > 768) {
+                    closeSidebars();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

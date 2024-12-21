@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DLens Search Results</title>
+    <style>
+        /* Theme Variables */
+        html[data-theme="light"] {
+            --bg-color: #f5f5f5;
+            --container-bg: white;
+            --text-color: #333;
+            --header-bg: #2c3e50;
+            --header-color: white;
+            --table-header-bg: #f8f9fa;
+            --table-header-hover: #f0f0f0;
+            --table-border: #e9ecef;
+            --table-hover: #f8f9fa;
+            --btn-bg: #f0f0f0;
+            --btn-hover: #e0e0e0;
+            --size-color: #333;
+            --timestamp-color: #666;
+            --summary-bg: #f8f9fa;
+            --theme-toggle-bg: #2c3e50;
+            --theme-toggle-color: white;
+            --scrollbar-thumb: #ccc;
+            --scrollbar-track: #f1f1f1;
+            --tooltip-bg: #2c3e50;
+            --tooltip-color: white;
+            --box-shadow: rgba(0, 0, 0, 0.1);
+        }
+
+        html[data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --container-bg: #2d2d2d;
+            --text-color: #e0e0e0;
+            --header-bg: #8e44ad;
+            --header-color: white;
+            --table-header-bg: #3d3d3d;
+            --table-header-hover: #454545;
+            --table-border: #3d3d3d;
+            --table-hover: #363636;
+            --btn-bg: #3d3d3d;
+            --btn-hover: #4d4d4d;
+            --size-color: #9b59b6;
+            --timestamp-color: #888;
+            --summary-bg: #363636;
+            --theme-toggle-bg: #8e44ad;
+            --theme-toggle-color: white;
+            --scrollbar-thumb: #666;
+            --scrollbar-track: #2d2d2d;
+            --tooltip-bg: #8e44ad;
+            --tooltip-color: white;
+            --box-shadow: rgba(0, 0, 0, 0.3);
+        }
+
+        /* Base Styles */
+        * {
+            transition: background-color 0.3s ease, 
+                        color 0.3s ease, 
+                        border-color 0.3s ease, 
+                        box-shadow 0.3s ease;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.5;
+        }
+
+        /* Container Styles */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--container-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--box-shadow);
+            overflow: hidden;
+        }
+
+        /* Header Styles */
+        .header {
+            background: var(--header-bg);
+            color: var(--header-color);
+            padding: 20px 30px;
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-content {
+            flex: 1;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .header p {
+            margin: 10px 0 0;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+
+        /* Theme Toggle Button */
+        .theme-toggle {
+            background: var(--theme-toggle-bg);
+            border: none;
+            border-radius: 20px;
+            padding: 8px 16px;
+            color: var(--theme-toggle-color);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: transform 0.2s ease, background-color 0.3s ease;
+            box-shadow: 0 2px 4px var(--box-shadow);
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+
+        .theme-toggle .icon {
+            font-size: 16px;
+            transition: transform 0.5s ease;
+        }
+
+        html[data-theme="dark"] .theme-toggle .icon {
+            transform: rotate(360deg);
+        }
+
+        /* Content Area */
+        .content {
+            padding: 20px 30px;
+        }
+
+        /* Summary Box */
+        .summary {
+            margin: 20px 0;
+            padding: 15px;
+            background: var(--summary-bg);
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1.6;
+            border-left: 4px solid var(--header-bg);
+        }
+
+        .summary strong {
+            color: var(--header-bg);
+        }
+
+        /* Table Container */
+        .table-container {
+            width: 100%;
+            overflow: auto;
+            margin-top: 10px;
+            max-height: 70vh;
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+            border-radius: 4px;
+            position: relative;
+        }
+
+        /* Scrollbar Styles */
+        .table-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .table-container::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+            border-radius: 4px;
+        }
+
+        .table-container::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 4px;
+            border: 2px solid var(--scrollbar-track);
+            background-clip: padding-box;
+        }
+
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb);
+            opacity: 0.8;
+        }
+
+        .table-container::-webkit-scrollbar-corner {
+            background: var(--scrollbar-track);
+        }
+
+        /* Table Styles */
+        table {
+            width: 100%;
+            min-width: 800px;
+            border-collapse: collapse;
+            margin: 0;
+            font-size: 14px;
+            background: var(--container-bg);
+        }
+
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: var(--table-header-bg);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-color);
+            border-bottom: 2px solid var(--table-border);
+            user-select: none;
+            cursor: pointer;
+        }
+
+        thead th::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 2px;
+            background: var(--table-border);
+        }
+
+        th:hover {
+            background: var(--table-header-hover);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--table-border);
+            vertical-align: middle;
+            color: var(--text-color);
+        }
+
+        tr:hover {
+            background: var(--table-hover);
+        }
+
+        /* Column Styles */
+        .type-col {
+            width: 120px;
+            min-width: 120px;
+        }
+
+        .path-col {
+            min-width: 200px;
+        }
+
+        .size-col {
+            width: 100px;
+            min-width: 100px;
+            text-align: right;
+            color: var(--size-color);
+        }
+
+        .modified-col {
+            width: 180px;
+            min-width: 180px;
+        }
+
+        /* Path Cell Styles */
+        .path-cell {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .path-text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .path-cell:hover .path-text {
+            overflow: visible;
+            white-space: normal;
+            word-break: break-all;
+            position: relative;
+            z-index: 2;
+            background: var(--container-bg);
+        }
+
+        /* Icon and Button Styles */
+        .file-icon {
+            margin-right: 8px;
+            opacity: 0.8;
+        }
+
+        .copy-btn {
+            padding: 4px 8px;
+            background: var(--btn-bg);
+            border: none;
+            border-radius: 4px;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 14px;
+            opacity: 0.8;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:hover {
+            background: var(--btn-hover);
+            opacity: 1;
+            transform: translateY(-1px);
+        }
+
+        /* Tooltip Styles */
+        .tooltip {
+            visibility: hidden;
+            position: absolute;
+            background: var(--tooltip-bg);
+            color: var(--tooltip-color);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateX(-50%) translateY(10px);
+            transition: opacity 0.2s ease-in-out, 
+                        transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                        visibility 0.2s ease-in-out;
+            top: -30px;
+            left: 50%;
+            box-shadow: 0 2px 6px var(--box-shadow);
+        }
+
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 4px;
+            border-style: solid;
+            border-color: var(--tooltip-bg) transparent transparent transparent;
+        }
+
+        .tooltip.show {
+            visibility: visible;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Sort Icons */
+        .sort-icon {
+            opacity: 0.5;
+            transition: opacity 0.2s, transform 0.2s;
+            font-size: 12px;
+            margin-left: 4px;
+            color: var(--text-color);
+        }
+
+        th:hover .sort-icon {
+            opacity: 0.8;
+        }
+
+        th.sorting-asc .sort-icon {
+            opacity: 1;
+            transform: rotate(180deg);
+        }
+
+        th.sorting-desc .sort-icon {
+            opacity: 1;
+            transform: rotate(0deg);
+        }
+
+        th.size-col .header-content {
+            float: right;
+        }
+
+        /* Timestamps */
+        .timestamp {
+            color: var(--timestamp-color);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                margin: 0;
+                border-radius: 0;
+            }
+            .content {
+                padding: 15px;
+            }
+            .summary {
+                padding: 10px;
+                font-size: 13px;
+            }
+            th, td {
+                padding: 10px;
+            }
+            .theme-toggle {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <h1>DLens Search Results</h1>
+                <p>Generated on {{ current_time }}</p>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span class="icon">☀️</span>
+                <span class="text">Toggle Theme</span>
+            </button>
+        </div>
+        <div class="content">
+            <div class="summary">
+                <strong>Total Results:</strong> {{ results|length }} items found
+                | <strong>Total Size:</strong> {{ total_size }}
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="type-col" onclick="sortTable(0)">
+                                <div class="header-content">
+                                    Type<span class="sort-icon">▼</span>
+                                </div>
+                            </th>
+                            <th class="path-col" onclick="sortTable(1)">
+                                <div class="header-content">
+                                    Path<span class="sort-icon">▼</span>
+                                </div>
+                            </th>
+                            <th class="path-col" onclick="sortTable(2)">
+                                <div class="header-content">
+                                    Relative Path<span class="sort-icon">▼</span>
+                                </div>
+                            </th>
+                            <th class="size-col" onclick="sortTable(3, true)">
+                                <div class="header-content">
+                                    Size<span class="sort-icon">▼</span>
+                                </div>
+                            </th>
+                            <th class="modified-col" onclick="sortTable(4, true)">
+                                <div class="header-content">
+                                    Modified<span class="sort-icon">▼</span>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                        {% for item in results %}
+                        <tr>
+                            <td><span class="file-icon">{{ item.icon }}</span>{{ item.type }}</td>
+                            <td class="path-cell" title="{{ item.path }}">
+                                <span class="path-text">{{ item.path }}</span>
+                                <button class="copy-btn" onclick="copyToClipboard(this, '{{ item.path }}')" title="Copy path">📋</button>
+                                <div class="tooltip">Copied!</div>
+                            </td>
+                            <td class="relative-path" title="{{ item.relative_path }}">{{ item.relative_path }}</td>
+                            <td class="size-col" data-value="{{ item.raw_size }}">{{ item.size }}</td>
+                            <td class="modified-col"><span class="timestamp" data-value="{{ item.timestamp_raw }}">{{ item.timestamp }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme management
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            const icon = document.querySelector('.theme-toggle .icon');
+            const text = document.querySelector('.theme-toggle .text');
+            
+            html.setAttribute('data-theme', savedTheme);
+            
+            // Update button to match current theme
+            if (savedTheme === 'dark') {
+                icon.textContent = '🌙';
+                text.textContent = 'Dark Mode';  // Shows current mode
+            } else {
+                icon.textContent = '☀️';
+                text.textContent = 'Light Mode';  // Shows current mode
+            }
+        }
+        
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.querySelector('.theme-toggle .icon');
+            const text = document.querySelector('.theme-toggle .text');
+            
+            const newTheme = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', newTheme);
+            
+            // Update button to show current mode
+            if (newTheme === 'dark') {
+                icon.textContent = '🌙';
+                text.textContent = 'Dark Mode';  // Shows we are in dark mode
+            } else {
+                icon.textContent = '☀️';
+                text.textContent = 'Light Mode';  // Shows we are in light mode
+            }
+        
+            localStorage.setItem('theme', newTheme);
+        }
+
+        function copyToClipboard(button, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const tooltip = button.nextElementSibling;
+                
+                tooltip.classList.add('show');
+
+                button.style.transition = 'opacity 0.2s';
+                button.style.opacity = '0';
+                setTimeout(() => {
+                    button.textContent = '✓';
+                    button.style.opacity = '1';
+                }, 100);
+                
+                setTimeout(() => {
+                    tooltip.classList.remove('show');
+                    button.style.opacity = '0';
+                    setTimeout(() => {
+                        button.textContent = '📋';
+                        button.style.opacity = '1';
+                    }, 100);
+                }, 1500);
+            });
+        }
+
+        let currentSort = {
+            column: -1,
+            ascending: true
+        };
+
+        function sortTable(column, isNumeric = false) {
+            const tbody = document.getElementById('resultsBody');
+            const rows = Array.from(tbody.getElementsByTagName('tr'));
+            const header = document.getElementsByTagName('th')[column];
+            
+            document.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sorting-asc', 'sorting-desc');
+            });
+
+            const ascending = currentSort.column === column ? !currentSort.ascending : true;
+            currentSort = { column, ascending };
+
+            header.classList.add(ascending ? 'sorting-asc' : 'sorting-desc');
+
+            rows.sort((a, b) => {
+                let aValue, bValue;
+                
+                if (isNumeric) {
+                    const aCell = a.cells[column];
+                    const bCell = b.cells[column];
+                    aValue = parseFloat(aCell.dataset.value || aCell.textContent);
+                    bValue = parseFloat(bCell.dataset.value || bCell.textContent);
+                } else {
+                    aValue = a.cells[column].textContent.trim().toLowerCase();
+                    bValue = b.cells[column].textContent.trim().toLowerCase();
+                }
+
+                if (aValue < bValue) return ascending ? -1 : 1;
+                if (aValue > bValue) return ascending ? 1 : -1;
+                return 0;
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        // Initialize theme when DOM is loaded
+        document.addEventListener('DOMContentLoaded', initializeTheme);
+    </script>
+</body>
+</html>
