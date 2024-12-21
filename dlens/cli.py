@@ -102,13 +102,13 @@ def map(path, **kwargs):
 @click.option('--regex/--no-regex', help='Use regex pattern')
 @click.option('--case-sensitive/--no-case-sensitive', help='Case-sensitive search')
 @click.option('--max-results', type=int, help='Maximum results')
-@click.option('--max-depth', type= int, help='Maximum search depth')
+@click.option('--max-depth', type=int, help='Maximum search depth')
 @click.option('--follow-symlinks/--no-symlinks', help='Follow symbolic links')
 @click.option('--show-hidden/--no-hidden', help='Include hidden files')
 @click.option('--parallel/--no-parallel', help='Use parallel search')
 @click.option('--output-format', type=click.Choice(['text', 'json', 'csv', 'html']), help='Output format', default='text')
-@click.option('--output-file', type=click.Path(), help='Output file path for exports')
-
+@click.option('--output-file', type=click.Path(), help='Output file path')
+@click.option('--verbose/--no-verbose', help='Show detailed progress and errors', default=False)
 def search(pattern, path, **kwargs):
     """Search for files and directories matching pattern."""
     try:
@@ -129,7 +129,8 @@ def search(pattern, path, **kwargs):
             max_results=final_config.get('max_results'),
             max_depth=final_config.get('max_depth'),
             follow_symlinks=final_config.get('follow_symlinks', False),
-            show_hidden=final_config.get('show_hidden', False)
+            show_hidden=final_config.get('show_hidden', False),
+            verbose=final_config.get('verbose', False)
         )
         
         # Configure output options
@@ -155,6 +156,13 @@ def search(pattern, path, **kwargs):
         
         if not results:
             click.echo("No results found.")
+            # Show stats if verbose mode is on
+            if final_config.get('verbose'):
+                click.echo(f"Items scanned: {handler.stats.total_scanned}")
+                if handler.stats.errors_count > 0:
+                    click.echo(f"Errors encountered: {handler.stats.errors_count}")
+                if handler.stats.skipped_count > 0:
+                    click.echo(f"Items skipped: {handler.stats.skipped_count}")
             return
         
         # Handle different output formats
@@ -164,23 +172,46 @@ def search(pattern, path, **kwargs):
             table.add_column("Type", style="bold")
             table.add_column("Path", style="cyan")
             table.add_column("Size", justify="right", style="light_green")
+            table.add_column("Status", style="yellow") if final_config.get('verbose') else None
             
             for result in results:
                 icon = FileTypeIcons.get_icon(result.path)
                 size = f"{result.size:,} bytes" if result.size else "-"
-                table.add_row(icon, result.match_context, size)
+                row = [icon, result.match_context, size]
+                if final_config.get('verbose') and hasattr(result, 'error'):
+                    row.append(result.error or "OK")
+                table.add_row(*row)
                 
             Console().print(table)
             
+            # Show stats in verbose mode
+            if final_config.get('verbose'):
+                click.echo(f"\nSearch Statistics:")
+                click.echo(f"Total matches: {len(results)}")
+                click.echo(f"Items scanned: {handler.stats.total_scanned}")
+                if handler.stats.errors_count > 0:
+                    click.echo(f"Errors encountered: {handler.stats.errors_count}")
+                if handler.stats.skipped_count > 0:
+                    click.echo(f"Items skipped: {handler.stats.skipped_count}")
+            
         elif output_format == 'json':
-            # Format results as JSON
-            json_results = [{
-                "path": str(result.path),
-                "is_directory": result.is_dir,
-                "size": result.size,
-                "match_context": result.match_context,
-                "icon": FileTypeIcons.get_icon(result.path)
-            } for result in results]
+            # Format results as JSON with enhanced information
+            json_results = {
+                "results": [{
+                    "path": str(result.path),
+                    "is_directory": result.is_dir,
+                    "size": result.size,
+                    "match_context": result.match_context,
+                    "icon": FileTypeIcons.get_icon(result.path),
+                    "error": result.error if hasattr(result, 'error') else None
+                } for result in results],
+                "stats": {
+                    "total_matches": len(results),
+                    "total_scanned": handler.stats.total_scanned,
+                    "errors_count": handler.stats.errors_count,
+                    "skipped_count": handler.stats.skipped_count
+                }
+            }
             
             if output_file:
                 with open(output_file, 'w', encoding='utf-8') as f:
@@ -200,7 +231,11 @@ def search(pattern, path, **kwargs):
                 if output_format == 'csv':
                     exporter.export_csv(output_file)
                 else:  # html
-                    exporter.export_html(output_file)
+                    template = final_config.get('template', 'light')
+                    exporter.export_html(
+                        output_path=output_file,
+                        template=f"search_results{'_dark' if template == 'dark' else ''}.html"
+                    )
                 
                 click.echo(f"Results exported to {output_file}")
             except Exception as e:
