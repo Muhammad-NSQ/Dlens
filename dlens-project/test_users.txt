@@ -1,0 +1,40 @@
+Email: free@test.com
+Password: testpass123
+Tier: free
+
+
+
+INFO:__main__:
+Email: pro@test.com
+Password: testpass123
+Tier: pro
+
+
+
+INFO:__main__:
+Email: team@test.com
+Password: testpass123
+Tier: team
+
+
+
+INFO:__main__:
+Email: enterprise@test.com
+Password: testpass123
+Tier: enterprise
+
+
+
+INFO:__main__:
+Email: expired@test.com
+Password: testpass123
+Tier: pro
+(Expired)
+
+
+INFO:__main__:
+Email: grace@test.com
+Password: testpass123
+Tier: team
+
+(Grace Period)
