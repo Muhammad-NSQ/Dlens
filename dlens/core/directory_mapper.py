@@ -1,11 +1,13 @@
 import json
 import logging
+import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional, Union
 from jinja2 import Template
-from datetime import datetime
+from contextlib import contextmanager
 
 from rich.console import Console
 from rich.tree import Tree
@@ -17,8 +19,6 @@ from dlens.utils.stats_collector import DirectoryStats
 from dlens.ui.file_icons import FileTypeIcons
 from dlens.utils.size_formatter import SizeFormatter
 from dlens.resources.resources_manager import ResourcesManager
-
-
 
 
 class MapFormatter:
@@ -42,62 +42,66 @@ class MapFormatter:
             if max_depth is not None and level >= max_depth:
                 return
 
-            scan_result = scan_func(dir_path)
-            dirs = scan_result['dirs']
-            files = scan_result['files']
+            try:
+                scan_result = scan_func(dir_path)
+                dirs = scan_result['dirs']
+                files = scan_result['files']
 
-            current_max_preview = root_preview if level == 0 else max_preview
+                current_max_preview = root_preview if level == 0 else max_preview
 
-            # Add directories
-            for d in dirs[:current_max_preview]:
-                try:
-                    style = theme.get('directory', 'bold light_green') if color else ""
-                    icon = FileTypeIcons.get_icon(d) if show_icons else ""
-                    name = f"{icon} {d.name}/" if show_icons else f"{d.name}/"
-                    subtree = parent.add(f"[{style}]{name}[/]" if style else name)
-                    add_tree_branch(subtree, d, level + 1)
-                except Exception as e:
-                    logging.warning(f"Error adding directory {d}: {str(e)}")
+                # Add directories
+                for d in dirs[:current_max_preview]:
+                    try:
+                        style = theme.get('directory', 'bold light_green') if color else ""
+                        icon = FileTypeIcons.get_icon(d) if show_icons else ""
+                        name = f"{icon} {d.name}/" if show_icons else f"{d.name}/"
+                        subtree = parent.add(f"[{style}]{name}[/]" if style else name)
+                        add_tree_branch(subtree, d, level + 1)
+                    except Exception as e:
+                        logging.warning(f"Error adding directory {d}: {str(e)}")
 
-            if len(dirs) > current_max_preview:
-                more_style = theme.get('more_items', 'dim')
-                parent.add(
-                    f"[{more_style}](... {len(dirs) - current_max_preview} more folders)[/]"
-                    if color else
-                    f"(... {len(dirs) - current_max_preview} more folders)"
-                )
+                if len(dirs) > current_max_preview:
+                    more_style = theme.get('more_items', 'dim')
+                    parent.add(
+                        f"[{more_style}](... {len(dirs) - current_max_preview} more folders)[/]"
+                        if color else
+                        f"(... {len(dirs) - current_max_preview} more folders)"
+                    )
 
-            # Add files
-            for f in files[:current_max_preview]:
-                try:
-                    if show_details:
-                        file_info = platform_handler.get_file_info(f)
-                        size = SizeFormatter.format_size(file_info['size'])
-                        details = (
-                            f" [italic {theme.get('details', 'dim cyan')}]"
-                            f"(size: {size}, "
-                            f"modified: {file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})[/]"
-                            if color else
-                            f" (size: {size}, modified: {file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
-                        )
-                        icon = FileTypeIcons.get_icon(f) if show_icons else ""
-                        display_name = f"{icon} {f.name}{details}" if show_icons else f"{f.name}{details}"
-                    else:
-                        icon = FileTypeIcons.get_icon(f) if show_icons else ""
-                        display_name = f"{icon} {f.name}" if show_icons else f"{f.name}"
+                # Add files
+                for f in files[:current_max_preview]:
+                    try:
+                        if show_details:
+                            file_info = platform_handler.get_file_info(f)
+                            size = SizeFormatter.format_size(file_info.get('size', 0))
+                            modified = file_info.get('modified')
+                            modified_str = modified.strftime('%Y-%m-%d %H:%M:%S') if modified else 'unknown'
+                            details = (
+                                f" [italic {theme.get('details', 'dim cyan')}]"
+                                f"(size: {size}, modified: {modified_str})[/]"
+                                if color else
+                                f" (size: {size}, modified: {modified_str})"
+                            )
+                            icon = FileTypeIcons.get_icon(f) if show_icons else ""
+                            display_name = f"{icon} {f.name}{details}" if show_icons else f"{f.name}{details}"
+                        else:
+                            icon = FileTypeIcons.get_icon(f) if show_icons else ""
+                            display_name = f"{icon} {f.name}" if show_icons else f"{f.name}"
 
-                    style = theme.get('file', 'bold yellow') if color else ""
-                    parent.add(f"[{style}]{display_name}[/]" if style else display_name)
-                except Exception as e:
-                    logging.warning(f"Error adding file {f}: {str(e)}")
+                        style = theme.get('file', 'bold yellow') if color else ""
+                        parent.add(f"[{style}]{display_name}[/]" if style else display_name)
+                    except Exception as e:
+                        logging.warning(f"Error adding file {f}: {str(e)}")
 
-            if len(files) > current_max_preview:
-                more_style = theme.get('more_items', 'dim')
-                parent.add(
-                    f"[{more_style}](... {len(files) - current_max_preview} more files)[/]"
-                    if color else
-                    f"(... {len(files) - current_max_preview} more files)"
-                )
+                if len(files) > current_max_preview:
+                    more_style = theme.get('more_items', 'dim')
+                    parent.add(
+                        f"[{more_style}](... {len(files) - current_max_preview} more files)[/]"
+                        if color else
+                        f"(... {len(files) - current_max_preview} more files)"
+                    )
+            except Exception as e:
+                logging.error(f"Error processing directory {dir_path}: {str(e)}")
 
         try:
             style = theme.get('root', 'bold red') if color else ""
@@ -118,25 +122,57 @@ class MapFormatter:
         try:
             scan_result = scan_func(dir_path)
             
+            contents = []
+            
+            # Process directories
+            for d in scan_result['dirs']:
+                try:
+                    contents.append(MapFormatter.format_json_tree(d, scan_func, platform_handler))
+                except Exception as e:
+                    logging.warning(f"Error processing directory {d} for JSON: {str(e)}")
+                    contents.append({
+                        "name": d.name,
+                        "type": "directory",
+                        "path": str(d),
+                        "error": str(e)
+                    })
+            
+            # Process files
+            for f in scan_result['files']:
+                try:
+                    file_info = platform_handler.get_file_info(f)
+                    contents.append({
+                        "name": f.name,
+                        "type": "file",
+                        "path": str(f),
+                        "size": file_info.get('size'),
+                        "modified": file_info.get('modified').isoformat() if file_info.get('modified') else None,
+                        "created": file_info.get('created').isoformat() if file_info.get('created') else None,
+                        "permissions": file_info.get('permissions')
+                    })
+                except Exception as e:
+                    logging.warning(f"Error processing file {f} for JSON: {str(e)}")
+                    contents.append({
+                        "name": f.name,
+                        "type": "file",
+                        "path": str(f),
+                        "error": str(e)
+                    })
+            
             return {
                 "name": dir_path.name,
                 "type": "directory",
                 "path": str(dir_path),
-                "contents": [
-                    MapFormatter.format_json_tree(d, scan_func, platform_handler) 
-                    for d in scan_result['dirs']
-                ] + [
-                    {
-                        "name": f.name,
-                        "type": "file",
-                        "path": str(f),
-                        **platform_handler.get_file_info(f)
-                    } for f in scan_result['files']
-                ]
+                "contents": contents
             }
         except Exception as e:
             logging.error(f"Error building JSON tree for {dir_path}: {str(e)}")
-            return {"name": dir_path.name, "error": str(e)}
+            return {
+                "name": dir_path.name,
+                "type": "directory", 
+                "path": str(dir_path),
+                "error": str(e)
+            }
 
     @staticmethod
     def format_markdown_tree(
@@ -161,14 +197,18 @@ class MapFormatter:
 
             # Add directories
             for d in scan_result['dirs'][:current_max_preview]:
-                md_output.append(f"{'  ' * indent}- 📁 {d.name}/")
-                md_output.extend(
-                    MapFormatter.format_markdown_tree(
-                        d, scan_func, max_preview, root_preview,
-                        max_depth, show_details, platform_handler,
-                        indent + 1, current_depth + 1
+                try:
+                    md_output.append(f"{'  ' * indent}- 📁 {d.name}/")
+                    md_output.extend(
+                        MapFormatter.format_markdown_tree(
+                            d, scan_func, max_preview, root_preview,
+                            max_depth, show_details, platform_handler,
+                            indent + 1, current_depth + 1
+                        )
                     )
-                )
+                except Exception as e:
+                    logging.warning(f"Error processing directory {d} for Markdown: {str(e)}")
+                    md_output.append(f"{'  ' * indent}- 📁 {d.name}/ (error: {str(e)})")
 
             if len(scan_result['dirs']) > current_max_preview:
                 md_output.append(
@@ -177,15 +217,19 @@ class MapFormatter:
 
             # Add files
             for f in scan_result['files'][:current_max_preview]:
-                if show_details:
-                    file_info = platform_handler.get_file_info(f)
-                    details = (
-                        f" (size: {file_info['size']} bytes, "
-                        f"modified: {file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
-                    )
-                    md_output.append(f"{'  ' * indent}- 📄 {f.name}{details}")
-                else:
-                    md_output.append(f"{'  ' * indent}- 📄 {f.name}")
+                try:
+                    if show_details:
+                        file_info = platform_handler.get_file_info(f)
+                        size = file_info.get('size', 0)
+                        modified = file_info.get('modified')
+                        modified_str = modified.strftime('%Y-%m-%d %H:%M:%S') if modified else 'unknown'
+                        details = f" (size: {size} bytes, modified: {modified_str})"
+                        md_output.append(f"{'  ' * indent}- 📄 {f.name}{details}")
+                    else:
+                        md_output.append(f"{'  ' * indent}- 📄 {f.name}")
+                except Exception as e:
+                    logging.warning(f"Error processing file {f} for Markdown: {str(e)}")
+                    md_output.append(f"{'  ' * indent}- 📄 {f.name} (error: {str(e)})")
 
             if len(scan_result['files']) > current_max_preview:
                 md_output.append(
@@ -204,58 +248,57 @@ class MapFormatter:
         def format_size(size: int) -> str:
             if size is None:
                 return "N/A"
-            
-            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-                if size < 1024:
-                    return f"{size:.1f} {unit}"
-                size /= 1024
-            return f"{size:.1f} PB"
+            return SizeFormatter.format_size(size)
 
         def build_tree_html(path: Path) -> str:
-            scan_result = scan_func(path)
-            html_parts = []
-            
-            # Process directories
-            for d in scan_result['dirs']:
-                try:
-                    icon = FileTypeIcons.get_icon(d)
-                    dir_html = f"""
-                        <div class="tree-item" onclick="toggleDirectory(this)">
-                            <i class="fas fa-chevron-right"></i>
-                            {icon}
-                            <span>{d.name}</span>
-                        </div>
-                        <div class="tree-content hidden">
-                            {build_tree_html(d)}
-                        </div>
-                    """
-                    html_parts.append(dir_html)
-                except Exception as e:
-                    logging.warning(f"Error processing directory {d}: {str(e)}")
-                    continue
-            
-            # Process files
-            for f in scan_result['files']:
-                try:
-                    size = format_size(f.stat().st_size if f.is_file() else None)
-                    modified = datetime.fromtimestamp(f.stat().st_mtime).strftime(
-                        '%Y-%m-%d %H:%M:%S'
-                    ) if f.is_file() else "N/A"
-                    
-                    icon = FileTypeIcons.get_icon(f)
-                    file_html = f"""
-                        <div class="tree-item">
-                            {icon}
-                            <span>{f.name}</span>
-                            <span class="file-size" title="Modified: {modified}">{size}</span>
-                        </div>
-                    """
-                    html_parts.append(file_html)
-                except Exception as e:
-                    logging.warning(f"Error processing file {f}: {str(e)}")
-                    continue
-                    
-            return '\n'.join(html_parts)
+            try:
+                scan_result = scan_func(path)
+                html_parts = []
+                
+                # Process directories
+                for d in scan_result['dirs']:
+                    try:
+                        icon = FileTypeIcons.get_icon(d)
+                        dir_html = f"""
+                            <div class="tree-item" onclick="toggleDirectory(this)">
+                                <i class="fas fa-chevron-right"></i>
+                                {icon}
+                                <span>{d.name}</span>
+                            </div>
+                            <div class="tree-content hidden">
+                                {build_tree_html(d)}
+                            </div>
+                        """
+                        html_parts.append(dir_html)
+                    except Exception as e:
+                        logging.warning(f"Error processing directory {d} for HTML: {str(e)}")
+                        continue
+                
+                # Process files
+                for f in scan_result['files']:
+                    try:
+                        file_info = platform_handler.get_file_info(f)
+                        size = format_size(file_info.get('size'))
+                        modified = file_info.get('modified')
+                        modified_str = modified.strftime('%Y-%m-%d %H:%M:%S') if modified else "N/A"
+                        
+                        icon = FileTypeIcons.get_icon(f)
+                        file_html = f"""
+                            <div class="tree-item">
+                                {icon}
+                                <span>{f.name}</span>
+                                <span class="file-size" title="Modified: {modified_str}">{size}</span>
+                            </div>
+                        """
+                        html_parts.append(file_html)
+                    except Exception as e:
+                        logging.warning(f"Error processing file {f} for HTML: {str(e)}")
+                        continue
+                        
+                return '\n'.join(html_parts)
+            except Exception as e:
+                logging.error(f"Error building HTML tree for {path}: {str(e)}")
+                return f"<div class='error'>Error building directory tree: {str(e)}</div>"
 
         try:
             return build_tree_html(dir_path)
@@ -266,29 +309,38 @@ class MapFormatter:
     @staticmethod
     def format_statistics(stats: DirectoryStats) -> Table:
         """Format directory statistics as a Rich table"""
-        stats_summary = stats.get_summary()
-        
-        table = Table(title="Directory Statistics", show_header=True)
-        table.add_column("Metric", style="bold cyan")
-        table.add_column("Value")
-        
-        table.add_row("Total Files", str(stats_summary['total_files']))
-        table.add_row("Total Directories", str(stats_summary['total_dirs']))
-        table.add_row("Total Size", stats_summary['total_size'])
-        
-        file_types = "\n".join(f"{ext or 'no ext'}: {count}" 
-                              for ext, count in list(stats_summary['file_types'].items())[:10])
-        table.add_row("File Types (top 10)", file_types)
-        
-        largest_files = "\n".join(f"{path.split('/')[-1]}: {size}" 
-                                 for path, size in stats_summary['largest_files'][:5])
-        table.add_row("Largest Files (top 5)", largest_files)
-        
-        newest_files = "\n".join(f"{path.split('/')[-1]}: {date}" 
-                                for path, date in stats_summary['newest_files'][:5])
-        table.add_row("Recently Modified (top 5)", newest_files)
-        
-        return table
+        try:
+            stats_summary = stats.get_summary()
+            
+            table = Table(title="Directory Statistics", show_header=True)
+            table.add_column("Metric", style="bold cyan")
+            table.add_column("Value")
+            
+            table.add_row("Total Files", str(stats_summary['total_files']))
+            table.add_row("Total Directories", str(stats_summary['total_dirs']))
+            table.add_row("Total Size", stats_summary['total_size'])
+            
+            file_types = "\n".join(f"{ext or 'no ext'}: {count}" 
+                                  for ext, count in list(stats_summary['file_types'].items())[:10])
+            table.add_row("File Types (top 10)", file_types)
+            
+            largest_files = "\n".join(f"{path.split('/')[-1]}: {size}" 
+                                     for path, size in stats_summary['largest_files'][:5])
+            table.add_row("Largest Files (top 5)", largest_files)
+            
+            newest_files = "\n".join(f"{path.split('/')[-1]}: {date}" 
+                                    for path, date in stats_summary['newest_files'][:5])
+            table.add_row("Recently Modified (top 5)", newest_files)
+            
+            return table
+        except Exception as e:
+            logging.error(f"Error formatting statistics: {str(e)}")
+            # Return basic table on error
+            table = Table(title="Directory Statistics", show_header=True)
+            table.add_column("Metric", style="bold cyan")
+            table.add_column("Value")
+            table.add_row("Error", f"Could not generate statistics: {str(e)}")
+            return table
 
 
 class DirectoryMapper:
@@ -312,67 +364,121 @@ class DirectoryMapper:
         show_progress: bool = True,
         show_icons: bool = True,
     ):
-        """Initialize DirectoryMapper with configuration"""
-        self.console = Console(color_system="auto" if color else None)
-        self.platform = PlatformHandler()
-        self.path = self.platform.normalize_path(path)
+        """Initialize DirectoryMapper with configuration and validation"""
+        try:
+            self.console = Console(color_system="auto" if color else None)
+            self.platform = PlatformHandler()
+            self.path = self.platform.normalize_path(path)
+            
+            # Validate path exists and is accessible
+            if not self.path.exists():
+                raise FileNotFoundError(f"Path does not exist: {path}")
+            if not self.path.is_dir():
+                raise ValueError(f"Path is not a directory: {path}")
+            if not self.platform.check_access(self.path):
+                raise PermissionError(f"No read access to path: {path}")
+            
+            # Validate configuration parameters
+            self.max_preview = max(1, min(100, max_preview))
+            self.root_preview = max(1, min(100, root_preview))
+            self.show_hidden = bool(show_hidden)
+            self.max_depth = max_depth if max_depth is None or max_depth > 0 else None
+            self.color = bool(color)
+            self.filter_ext = set(filter_ext or [])
+            self.exclude_ext = set(exclude_ext or [])
+            self.show_details = bool(show_details)
+            
+            # Validate output format
+            valid_formats = ['text', 'json', 'markdown', 'html']
+            self.output_format = output_format if output_format in valid_formats else 'text'
+            
+            # Validate sort option
+            valid_sorts = ['name', 'size', 'date']
+            self.sort_by = sort_by if sort_by in valid_sorts else 'name'
+            
+            self.follow_symlinks = bool(follow_symlinks)
+            
+            # Set theme with fallback
+            self.theme = theme or {
+                "name": "default",
+                "description": "Default fallback theme",
+                "directory": "bold light_green",
+                "file": "bold yellow", 
+                "root": "bold red",
+                "details": "dim cyan",
+                "more_items": "dim",
+                "subdirectory_count": "dim"
+            }
+            
+            self.show_stats = bool(show_stats)
+            self.show_progress = bool(show_progress)
+            self.show_icons = bool(show_icons)
+            
+            # Initialize optional components
+            self.stats = DirectoryStats() if show_stats else None
+            self.progress = ProgressTracker(self.console) if show_progress else None
+            
+            # Setup logging with validation
+            log_file = log_path or 'dlens.log'
+            try:
+                logging.basicConfig(
+                    filename=log_file,
+                    level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s: %(message)s',
+                    filemode='a'
+                )
+            except (PermissionError, OSError) as e:
+                logging.warning(f"Cannot write to log file {log_file}: {e}")
+                # Continue without file logging
+            
+            # Initialize thread pool with reasonable limits
+            max_threads = min(8, (self.platform.max_threads or 4))
+            self.executor = None  # Initialize lazily
+            self.cache = {}
+            
+        except Exception as e:
+            logging.error(f"Failed to initialize DirectoryMapper: {e}")
+            raise
+
+    @contextmanager
+    def _get_executor(self):
+        """Context manager for thread pool executor"""
+        if self.executor is None:
+            max_threads = min(8, (self.platform.max_threads or 4))
+            self.executor = ThreadPoolExecutor(max_workers=max_threads)
         
-        self.max_preview = max_preview
-        self.root_preview = root_preview
-        self.show_hidden = show_hidden
-        self.max_depth = max_depth
-        self.color = color
-        self.filter_ext = set(filter_ext or [])
-        self.exclude_ext = set(exclude_ext or [])
-        self.show_details = show_details
-        self.output_format = output_format
-        self.sort_by = sort_by
-        self.follow_symlinks = follow_symlinks
-        self.theme = theme or {
-            "name": "default",
-            "description": "Default fallback theme",
-            "directory": "bold light_green",
-            "file": "bold yellow",
-            "root": "bold red",
-            "details": "dim cyan",
-            "more_items": "dim",
-            "subdirectory_count": "dim"
-        }
-        
-        self.show_stats = show_stats
-        self.show_progress = show_progress
-        self.show_icons = show_icons
-        
-        self.stats = DirectoryStats() if show_stats else None
-        self.progress = ProgressTracker(self.console) if show_progress else None
-        
-        logging.basicConfig(
-            filename=log_path or 'Dlens.log',
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s: %(message)s'
-        )
-        
-        self.executor = ThreadPoolExecutor(max_workers=self.platform.max_threads)
-        self.cache = {}
+        try:
+            yield self.executor
+        finally:
+            # Don't shutdown here, let the main cleanup handle it
+            pass
 
     def _get_entry_sort_key(self, entry: Path) -> Any:
         """Get sorting key for directory entry"""
-        if self.sort_by == "size":
-            try:
-                return entry.stat().st_size
-            except (PermissionError, OSError):
-                return 0
-        elif self.sort_by == "date":
-            try:
-                return entry.stat().st_mtime
-            except (PermissionError, OSError):
-                return 0
-        else:  # name
-            return str(entry).lower()
+        try:
+            if self.sort_by == "size":
+                try:
+                    return entry.stat().st_size
+                except (PermissionError, OSError):
+                    return 0
+            elif self.sort_by == "date":
+                try:
+                    return entry.stat().st_mtime
+                except (PermissionError, OSError):
+                    return 0
+            else:  # name
+                return str(entry).lower()
+        except Exception as e:
+            logging.debug(f"Error getting sort key for {entry}: {e}")
+            return str(entry).lower()  # Fallback to name
 
     def _sort_entries(self, entries: List[Path]) -> List[Path]:
         """Sort directory entries"""
-        return sorted(entries, key=self._get_entry_sort_key, reverse=(self.sort_by in ["size", "date"]))
+        try:
+            return sorted(entries, key=self._get_entry_sort_key, reverse=(self.sort_by in ["size", "date"]))
+        except Exception as e:
+            logging.warning(f"Error sorting entries: {e}")
+            return entries  # Return unsorted on error
 
     def _filter_entry(self, entry: Path) -> bool:
         """Filter directory entries"""
@@ -389,52 +495,80 @@ class DirectoryMapper:
                     
             return True
         except Exception as e:
-            logging.warning(f"Error filtering entry {entry}: {str(e)}")
+            logging.debug(f"Error filtering entry {entry}: {str(e)}")
             return False
 
     def _scan_directory(self, dir_path: Path) -> Dict[str, List[Path]]:
-        """Scan directory and return sorted, filtered entries"""
+        """Scan directory with improved error handling and memory management"""
         try:
             if not self.platform.check_access(dir_path):
-                raise PermissionError(f"Access denied to {dir_path}")
-                
-            entries = list(dir_path.iterdir())
+                logging.warning(f"Access denied to {dir_path}")
+                return {'dirs': [], 'files': []}
             
-            if self.show_progress and self.progress:
-                self.progress.update(len(entries))
-            
+            # Use iterator to avoid loading all entries into memory at once
             dirs = []
             files = []
+            processed_count = 0
             
-            for entry in entries:
-                if not self._filter_entry(entry):
-                    continue
+            try:
+                # Process entries one by one instead of loading all at once
+                for entry in dir_path.iterdir():
+                    # Limit processing to prevent memory issues
+                    if processed_count > 10000:  # Reasonable limit
+                        logging.warning(f"Too many entries in {dir_path}, truncating")
+                        break
                     
-                try:
-                    if entry.is_dir() and (self.follow_symlinks or not entry.is_symlink()):
-                        dirs.append(entry)
-                        if self.show_stats and self.stats:
-                            self.stats.add_directory()
-                    elif entry.is_file():
-                        files.append(entry)
-                        if self.show_stats and self.stats:
-                            self.stats.add_file(entry)
-                except Exception as e:
-                    logging.warning(f"Error processing entry {entry}: {str(e)}")
+                    if not self._filter_entry(entry):
+                        continue
                     
-            return {
-                'dirs': self._sort_entries(dirs),
-                'files': self._sort_entries(files)
-            }
+                    try:
+                        if entry.is_dir() and (self.follow_symlinks or not entry.is_symlink()):
+                            dirs.append(entry)
+                            if self.show_stats and self.stats:
+                                self.stats.add_directory()
+                        elif entry.is_file():
+                            files.append(entry)
+                            if self.show_stats and self.stats:
+                                self.stats.add_file(entry)
+                        
+                        processed_count += 1
+                        
+                        # Update progress periodically
+                        if self.show_progress and self.progress and processed_count % 100 == 0:
+                            self.progress.update(100)
+                            
+                    except (PermissionError, OSError) as e:
+                        logging.debug(f"Error processing entry {entry}: {e}")
+                        continue
+                        
+            except PermissionError as e:
+                logging.warning(f"Permission denied iterating {dir_path}: {e}")
+            except OSError as e:
+                logging.warning(f"OS error iterating {dir_path}: {e}")
+            
+            # Sort entries
+            try:
+                dirs = self._sort_entries(dirs)
+                files = self._sort_entries(files)
+            except Exception as e:
+                logging.warning(f"Error sorting entries: {e}")
+                # Continue with unsorted entries
+            
+            return {'dirs': dirs, 'files': files}
+            
         except Exception as e:
-            logging.error(f"Error scanning directory {dir_path}: {str(e)}")
+            logging.error(f"Error scanning directory {dir_path}: {e}")
             return {'dirs': [], 'files': []}
 
     def export_text(self) -> None:
-        """Export directory structure in text format"""
+        """Export directory structure in text format with proper cleanup"""
         try:
             if self.show_progress and self.progress:
                 self.progress.start()
+            
+            # Load icons if needed
+            if self.show_icons:
+                FileTypeIcons.load_icons()
             
             # Create rich tree visualization
             tree = MapFormatter.format_rich_tree(
@@ -462,9 +596,15 @@ class DirectoryMapper:
                 self.console.print("\n")
                 self.console.print(f"[dim]{self.progress.get_progress()}[/]")
                 
+        except KeyboardInterrupt:
+            self.console.print("\n[red]Operation cancelled by user[/]")
+            raise
         except Exception as e:
-            logging.error(f"Error in text export: {str(e)}")
-            print(f"Error: {e}")
+            logging.error(f"Error in text export: {e}")
+            self.console.print(f"[red]Error: {e}[/]")
+            raise
+        finally:
+            self._cleanup_resources()
 
     def export_json(self) -> None:
         """Export directory structure in JSON format"""
@@ -482,7 +622,10 @@ class DirectoryMapper:
             
             # Include statistics if enabled
             if self.show_stats and self.stats:
-                output["statistics"] = self.stats.get_summary()
+                try:
+                    output["statistics"] = self.stats.get_summary()
+                except Exception as e:
+                    logging.warning(f"Error collecting statistics for JSON: {e}")
             
             # Include progress if enabled
             if self.show_progress and self.progress:
@@ -493,9 +636,15 @@ class DirectoryMapper:
             
             print(json.dumps(output, indent=4, default=str))
             
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user")
+            raise
         except Exception as e:
-            logging.error(f"Error in JSON export: {str(e)}")
+            logging.error(f"Error in JSON export: {e}")
             print(f"Error: {e}")
+            raise
+        finally:
+            self._cleanup_resources()
 
     def export_markdown(self) -> None:
         """Export directory structure in Markdown format"""
@@ -515,22 +664,25 @@ class DirectoryMapper:
             
             # Include statistics if enabled
             if self.show_stats and self.stats:
-                stats = self.stats.get_summary()
-                md_lines.extend([
-                    "\n## Directory Statistics\n",
-                    f"- Total Files: {stats['total_files']}",
-                    f"- Total Directories: {stats['total_dirs']}",
-                    f"- Total Size: {stats['total_size']}",
-                    "\n### File Types\n",
-                    *[f"- {ext or 'no ext'}: {count}" 
-                      for ext, count in list(stats['file_types'].items())[:10]],
-                    "\n### Largest Files\n",
-                    *[f"- {path}: {size}" 
-                      for path, size in stats['largest_files'][:5]],
-                    "\n### Recently Modified\n",
-                    *[f"- {path}: {date}" 
-                      for path, date in stats['newest_files'][:5]]
-                ])
+                try:
+                    stats = self.stats.get_summary()
+                    md_lines.extend([
+                        "\n## Directory Statistics\n",
+                        f"- Total Files: {stats['total_files']}",
+                        f"- Total Directories: {stats['total_dirs']}",
+                        f"- Total Size: {stats['total_size']}",
+                        "\n### File Types\n",
+                        *[f"- {ext or 'no ext'}: {count}" 
+                          for ext, count in list(stats['file_types'].items())[:10]],
+                        "\n### Largest Files\n",
+                        *[f"- {path}: {size}" 
+                          for path, size in stats['largest_files'][:5]],
+                        "\n### Recently Modified\n",
+                        *[f"- {path}: {date}" 
+                          for path, date in stats['newest_files'][:5]]
+                    ])
+                except Exception as e:
+                    logging.warning(f"Error collecting statistics for Markdown: {e}")
             
             # Include progress if enabled
             if self.show_progress and self.progress:
@@ -538,84 +690,168 @@ class DirectoryMapper:
             
             print("\n".join(md_lines))
             
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user")
+            raise
         except Exception as e:
-            logging.error(f"Error in Markdown export: {str(e)}")
+            logging.error(f"Error in Markdown export: {e}")
             print(f"Error: {e}")
+            raise
+        finally:
+            self._cleanup_resources()
             
     def export_html(self) -> None:
-        """Export directory structure as interactive HTML"""
+        """Export directory structure as interactive HTML with better error handling"""
         try:
             if self.show_progress and self.progress:
                 self.progress.start()
                 
-            # Initialize stats if not already done
+            # Load required resources
+            if self.show_icons:
+                FileTypeIcons.load_icons()
+                
+            # Initialize stats if needed
             if self.show_stats and not self.stats:
                 self.stats = DirectoryStats()
             
-            # Get template from resources using ResourcesManager
-            template_content = ResourcesManager.get_template('directory_map.html')
-            template = Template(template_content)
+            # Get template with error handling
+            try:
+                template_content = ResourcesManager.get_template('directory_map.html')
+                template = Template(template_content)
+            except Exception as e:
+                logging.error(f"Failed to load HTML template: {e}")
+                raise ValueError(f"Cannot load HTML template: {e}")
             
-            # Build directory tree HTML and collect stats
-            directory_content = MapFormatter.format_html_tree(
-                self.path,
-                self._scan_directory,  # This method already updates stats as it scans
-                self.platform
-            )
+            # Build directory tree HTML
+            try:
+                directory_content = MapFormatter.format_html_tree(
+                    self.path,
+                    self._scan_directory,
+                    self.platform
+                )
+            except Exception as e:
+                logging.error(f"Failed to build HTML tree: {e}")
+                directory_content = f"<div class='error'>Error building directory tree: {e}</div>"
             
-            # Get statistics summary if enabled
+            # Get statistics summary
             if self.show_stats and self.stats:
-                stats_summary = self.stats.get_summary()
-                stats_data = {
-                    'total_files': stats_summary['total_files'],
-                    'total_dirs': stats_summary['total_dirs'],
-                    'total_size': stats_summary['total_size'],
-                    'file_types': stats_summary['file_types'],
-                    'largest_files': stats_summary['largest_files'],
-                    'newest_files': stats_summary['newest_files'],
-                    'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
+                try:
+                    stats_summary = self.stats.get_summary()
+                    stats_data = {
+                        'total_files': stats_summary['total_files'],
+                        'total_dirs': stats_summary['total_dirs'],
+                        'total_size': stats_summary['total_size'],
+                        'file_types': stats_summary['file_types'],
+                        'largest_files': stats_summary['largest_files'],
+                        'newest_files': stats_summary['newest_files'],
+                        'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                except Exception as e:
+                    logging.warning(f"Error collecting statistics: {e}")
+                    stats_data = self._get_empty_stats()
             else:
-                stats_data = {
-                    'total_files': 0,
-                    'total_dirs': 0,
-                    'total_size': '0 B',
-                    'file_types': {},
-                    'largest_files': [],
-                    'newest_files': [],
-                    'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
+                stats_data = self._get_empty_stats()
             
-            # Render template with context
-            html_content = template.render(
-                directory_content=directory_content,
-                stats=stats_data,  # Pass the complete stats object
-                root_path=str(self.path),
-                theme=self.theme
-            )
+            # Render template
+            try:
+                html_content = template.render(
+                    directory_content=directory_content,
+                    stats=stats_data,
+                    root_path=str(self.path),
+                    theme=self.theme
+                )
+            except Exception as e:
+                logging.error(f"Template rendering failed: {e}")
+                raise ValueError(f"Failed to render HTML template: {e}")
             
-            # Determine output path
-            if hasattr(self, 'output_file') and self.output_file:
-                output_path = Path(self.output_file)
-            else:
-                output_path = Path('directory_map.html')
+            # Write output file
+            output_path = self._get_output_path('directory_map.html')
+            try:
+                self._write_output_file(output_path, html_content)
+                print(f"Directory map exported to {output_path}")
+            except Exception as e:
+                logging.error(f"Failed to write HTML file: {e}")
+                raise IOError(f"Cannot write to {output_path}: {e}")
                 
-            # Ensure parent directories exist
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user")
+            raise
+        except Exception as e:
+            logging.error(f"Error in HTML export: {e}")
+            print(f"Error: {e}")
+            raise
+        finally:
+            self._cleanup_resources()
+
+    def _get_empty_stats(self) -> Dict[str, Any]:
+        """Get empty statistics structure"""
+        return {
+            'total_files': 0,
+            'total_dirs': 0,
+            'total_size': '0 B',
+            'file_types': {},
+            'largest_files': [],
+            'newest_files': [],
+            'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+    def _get_output_path(self, default_name: str) -> Path:
+        """Get validated output path"""
+        if hasattr(self, 'output_file') and self.output_file:
+            output_path = Path(self.output_file)
+        else:
+            output_path = Path(default_name)
+            
+        # Make absolute path
+        if not output_path.is_absolute():
+            output_path = Path.cwd() / output_path
+            
+        # Create parent directories
+        try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError) as e:
+            logging.error(f"Cannot create output directory: {e}")
+            raise
             
-            # Write to file
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
+        return output_path
+
+    def _write_output_file(self, output_path: Path, content: str) -> None:
+        """Write content to file with atomic operation"""
+        temp_path = output_path.with_suffix(output_path.suffix + '.tmp')
+        
+        try:
+            # Atomic write - write to temp file first
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+                f.flush()  # Ensure data is written
+                os.fsync(f.fileno())  # Force OS to write to disk
                 
-            print(f"Directory map exported to {output_path}")
+            # Move temp file to final location
+            temp_path.replace(output_path)
             
         except Exception as e:
-            logging.error(f"Error in HTML export: {str(e)}")
-            print(f"Error: {e}")
+            # Clean up temp file if it exists
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except Exception:
+                pass
+            raise
+
+    def _cleanup_resources(self) -> None:
+        """Clean up all resources properly"""
+        try:
+            if self.executor:
+                self.executor.shutdown(wait=True)
+                self.executor = None
+        except Exception as e:
+            logging.error(f"Error shutting down executor: {e}")
         
+        # Clear cache to free memory
+        self.cache.clear()
 
     def export(self) -> None:
-        """Main export method that delegates to specific format exporters"""
+        """Main export method with comprehensive error handling"""
         try:
             if self.output_format == "text":
                 self.export_text()
@@ -623,24 +859,32 @@ class DirectoryMapper:
                 self.export_json()
             elif self.output_format == "markdown":
                 self.export_markdown()
-            elif self.output_format == "html":    # Add this new condition
+            elif self.output_format == "html":
                 self.export_html()
             else:
                 raise ValueError(f"Unsupported output format: {self.output_format}")
                 
+        except KeyboardInterrupt:
+            logging.info("Export cancelled by user")
+            raise
         except Exception as e:
             logging.error(f"Export failed: {e}")
-            print(f"Error: {e}")
-            
+            raise
         finally:
-            try:
-                self.executor.shutdown(wait=False)
-            except Exception:
-                pass
+            self._cleanup_resources()
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with cleanup"""
+        self._cleanup_resources()
 
     def __del__(self):
-        """Cleanup resources"""
+        """Cleanup resources on deletion"""
         try:
-            self.executor.shutdown(wait=False)
+            self._cleanup_resources()
         except Exception:
+            # Don't raise exceptions in __del__
             pass

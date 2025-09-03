@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dlens"
+description = "Enhanced directory mapping and visualization tool"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["directory", "mapping", "filesystem", "visualization", "cli", "tree"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators", 
+    "Topic :: System :: Filesystems",
+    "Topic :: Utilities",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+dependencies = [
+    "click>=8.0.0",
+    "rich>=12.0.0",
+    "jinja2>=3.0.0",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/Muhammad-NSQ/Dlens"
+"Bug Reports" = "https://github.com/Muhammad-NSQ/Dlens/issues"
+Source = "https://github.com/Muhammad-NSQ/Dlens"
+Documentation = "https://github.com/Muhammad-NSQ/Dlens#readme"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black",
+    "flake8", 
+    "mypy",
+]
+test = [
+    "pytest>=6.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+dlens = "dlens.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dlens*"]
+
+[tool.setuptools.package-data]
+dlens = [
+    "resources/*.json",
+    "resources/templates/*.html",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py38"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

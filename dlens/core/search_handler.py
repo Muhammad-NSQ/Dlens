@@ -1,12 +1,11 @@
 from pathlib import Path
 import re
 import fnmatch
-from typing import Iterator, Pattern, List, Optional, Dict
-from concurrent.futures import ThreadPoolExecutor
 import logging
-from dataclasses import dataclass
-from contextlib import contextmanager
 import os
+from typing import Iterator, Pattern, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 @dataclass
 class SearchResult:
@@ -14,16 +13,7 @@ class SearchResult:
     match_context: str
     is_dir: bool
     size: Optional[int] = None
-    error: Optional[str] = None  # Added to track per-file errors
 
-@dataclass
-class SearchStats:
-    """Statistics for search operation"""
-    total_scanned: int = 0
-    matches_found: int = 0
-    errors_count: int = 0
-    skipped_count: int = 0
-    
 class SearchHandler:
     def __init__(
         self,
@@ -35,263 +25,271 @@ class SearchHandler:
         max_depth: Optional[int] = None,
         follow_symlinks: bool = False,
         show_hidden: bool = False,
-        max_workers: int = 4,
-        verbose: bool = False
+        max_workers: int = None
     ):
         self.root_path = Path(root_path)
-        self.pattern = pattern
+        self.pattern = self._validate_pattern(pattern)
         self.use_regex = use_regex
         self.case_sensitive = case_sensitive
         self.max_results = max_results
         self.max_depth = max_depth
         self.follow_symlinks = follow_symlinks
         self.show_hidden = show_hidden
-        self.verbose = verbose
-        self.stats = SearchStats()
-        self.executor = None  # Will be initialized when needed
+        
+        # Set reasonable max_workers based on system
+        if max_workers is None:
+            max_workers = min(4, (os.cpu_count() or 1) + 1)
         self.max_workers = max_workers
+        
+        self.executor = None  # Initialize lazily
         self._compile_pattern()
         
-    @contextmanager
-    def _get_executor(self):
-        """Context manager for ThreadPoolExecutor"""
-        try:
-            self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-            yield self.executor
-        finally:
-            if self.executor:
-                self.executor.shutdown(wait=True)
-                self.executor = None
-
+    def _validate_pattern(self, pattern: str) -> str:
+        """Validate and sanitize search pattern"""
+        if not pattern or not pattern.strip():
+            raise ValueError("Search pattern cannot be empty")
+        
+        pattern = pattern.strip()
+        if len(pattern) > 1000:  # Reasonable limit
+            raise ValueError("Search pattern too long (max 1000 characters)")
+            
+        return pattern
+        
     def _compile_pattern(self) -> None:
+        """Compile pattern with proper error handling"""
         try:
             if self.use_regex:
                 flags = 0 if self.case_sensitive else re.IGNORECASE
                 self._matcher = re.compile(self.pattern, flags)
             else:
-                pattern = fnmatch.translate(self.pattern)
+                # Use fnmatch for shell-style wildcards
+                translated_pattern = fnmatch.translate(self.pattern)
                 flags = 0 if self.case_sensitive else re.IGNORECASE
-                self._matcher = re.compile(pattern, flags)
+                self._matcher = re.compile(translated_pattern, flags)
         except re.error as e:
+            logging.error(f"Pattern compilation failed: {e}")
             raise ValueError(f"Invalid pattern: {e}")
-        except Exception as e:
-            raise ValueError(f"Pattern compilation error: {e}")
-
+                
     def _should_process(self, path: Path, current_depth: int) -> bool:
-        """Enhanced path processing check"""
+        """Check if path should be processed with error handling"""
         try:
-            # Basic checks
+            # Check hidden files
             if not self.show_hidden and path.name.startswith('.'):
-                self.stats.skipped_count += 1
                 return False
-                
-            if self.max_depth is not None and current_depth > self.max_depth:
-                self.stats.skipped_count += 1
-                return False
-                
-            # Symlink handling
-            if path.is_symlink():
-                if not self.follow_symlinks:
-                    self.stats.skipped_count += 1
-                    return False
-                # Check for symlink loops
-                try:
-                    path.resolve(strict=True)
-                except RuntimeError:
-                    if self.verbose:
-                        logging.warning(f"Symlink loop detected at {path}")
-                    self.stats.skipped_count += 1
-                    return False
-                    
-            # Path length check (Windows)
-            if os.name == 'nt' and len(str(path)) > 260:
-                if self.verbose:
-                    logging.warning(f"Path too long: {path}")
-                self.stats.skipped_count += 1
-                return False
-                
-            return True
             
-        except Exception as e:
-            if self.verbose:
-                logging.warning(f"Error processing path {path}: {e}")
-            self.stats.errors_count += 1
+            # Check depth limit
+            if self.max_depth is not None and current_depth > self.max_depth:
+                return False
+            
+            # Check symlinks
+            if not self.follow_symlinks and path.is_symlink():
+                return False
+                
+            # Check if path exists and is accessible
+            return path.exists()
+            
+        except (PermissionError, OSError) as e:
+            logging.debug(f"Cannot access path {path}: {e}")
             return False
-
+        
     def _matches_pattern(self, path: Path) -> bool:
-        """Enhanced pattern matching with error handling"""
+        """Check if path matches pattern with error handling"""
         try:
-            name = path.name
-            return bool(self._matcher.search(name))
+            return bool(self._matcher.search(path.name))
         except Exception as e:
-            if self.verbose:
-                logging.warning(f"Pattern matching error for {path}: {e}")
-            self.stats.errors_count += 1
+            logging.warning(f"Pattern matching error for {path}: {e}")
             return False
-
+        
     def _create_result(self, path: Path) -> SearchResult:
-        """Enhanced result creation with error handling"""
+        """Create search result with error handling"""
         try:
-            size = path.stat().st_size if path.is_file() else None
+            # Get file size safely
+            size = None
+            if path.is_file():
+                try:
+                    size = path.stat().st_size
+                except (PermissionError, OSError):
+                    size = None
+            
+            # Create relative path for display
+            try:
+                relative_path = str(path.relative_to(self.root_path))
+            except ValueError:
+                # Fallback if path is not relative to root
+                relative_path = str(path)
+            
             return SearchResult(
                 path=path,
-                match_context=str(path.relative_to(self.root_path)),
+                match_context=relative_path,
                 is_dir=path.is_dir(),
                 size=size
             )
-        except PermissionError:
-            error_msg = "Permission denied"
-            if self.verbose:
-                logging.warning(f"Permission denied: {path}")
-            self.stats.errors_count += 1
-        except OSError as e:
-            error_msg = f"OS Error: {e}"
-            if self.verbose:
-                logging.warning(f"OS Error for {path}: {e}")
-            self.stats.errors_count += 1
         except Exception as e:
-            error_msg = f"Error: {e}"
-            if self.verbose:
-                logging.warning(f"Error processing {path}: {e}")
-            self.stats.errors_count += 1
-            
-        return SearchResult(
-            path=path,
-            match_context=str(path.relative_to(self.root_path)),
-            is_dir=False,
-            size=None,
-            error=error_msg
-        )
-
+            logging.error(f"Error creating result for {path}: {e}")
+            # Return a basic result even if there's an error
+            return SearchResult(
+                path=path,
+                match_context=str(path),
+                is_dir=False,
+                size=None
+            )
+        
     def search(self) -> Iterator[SearchResult]:
-        """Sequential search with enhanced error handling"""
+        """Non-parallel search with proper resource management"""
         result_count = 0
         
         def _search_dir(path: Path, depth: int = 0) -> Iterator[SearchResult]:
             nonlocal result_count
             
+            # Check if we should process this path
             if not self._should_process(path, depth):
                 return
                 
-            try:
-                entries = list(path.iterdir())
-                self.stats.total_scanned += len(entries)
-            except (PermissionError, OSError) as e:
-                if self.verbose:
-                    logging.warning(f"Access denied to {path}: {e}")
-                self.stats.errors_count += 1
+            # Check result limit
+            if self.max_results and result_count >= self.max_results:
                 return
                 
-            for entry in entries:
-                if self.max_results and result_count >= self.max_results:
-                    return
-                    
-                if not self._should_process(entry, depth + 1):
-                    continue
-                    
-                if self._matches_pattern(entry):
-                    result = self._create_result(entry)
-                    yield result
-                    result_count += 1
-                    self.stats.matches_found += 1
-                    
-                if entry.is_dir():
-                    yield from _search_dir(entry, depth + 1)
+            try:
+                # Use iterator instead of loading all entries into memory
+                entries = path.iterdir()
+                
+                for entry in entries:
+                    # Check limits again
+                    if self.max_results and result_count >= self.max_results:
+                        break
+                        
+                    if not self._should_process(entry, depth + 1):
+                        continue
+                        
+                    # Check if entry matches pattern
+                    if self._matches_pattern(entry):
+                        result = self._create_result(entry)
+                        yield result
+                        result_count += 1
+                        
+                    # Recurse into directories
+                    if entry.is_dir() and self._should_process(entry, depth + 1):
+                        try:
+                            yield from _search_dir(entry, depth + 1)
+                        except RecursionError:
+                            logging.warning(f"Maximum recursion depth exceeded at {entry}")
+                            break
+                            
+            except PermissionError as e:
+                logging.warning(f"Permission denied accessing {path}: {e}")
+            except FileNotFoundError as e:
+                logging.warning(f"Path not found {path}: {e}")
+            except OSError as e:
+                logging.warning(f"OS error accessing {path}: {e}")
+            except Exception as e:
+                logging.error(f"Unexpected error in directory {path}: {e}")
                     
         try:
             yield from _search_dir(self.root_path)
         finally:
-            if self.verbose:
-                self._log_stats()
-
-    def search_parallel(self, chunk_size: int = 1000) -> Iterator[SearchResult]:
-        """Enhanced parallel search implementation"""
+            # Cleanup any resources
+            if self.executor:
+                self.executor.shutdown(wait=True)
+            
+    def search_parallel(self, chunk_size: int = 100) -> Iterator[SearchResult]:
+        """Parallel search with better memory management and cleanup"""
+        if not self.executor:
+            self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+            
         result_count = 0
         
-        def _chunk_walker(path: Path) -> List[Path]:
+        def _get_directory_chunks(path: Path, max_depth: Optional[int] = None) -> Iterator[List[Path]]:
+            """Get directory entries in chunks to manage memory"""
             chunk = []
+            
             try:
                 for entry in path.rglob('*'):
+                    # Check depth limit
+                    if max_depth is not None:
+                        try:
+                            depth = len(entry.relative_to(path).parents)
+                            if depth > max_depth:
+                                continue
+                        except ValueError:
+                            continue
+                    
+                    chunk.append(entry)
+                    
                     if len(chunk) >= chunk_size:
                         yield chunk
                         chunk = []
-                    chunk.append(entry)
-            except Exception as e:
-                if self.verbose:
-                    logging.warning(f"Error walking directory {path}: {e}")
-            if chunk:
-                yield chunk
-
+                        
+                if chunk:
+                    yield chunk
+                    
+            except (PermissionError, OSError) as e:
+                logging.warning(f"Error walking directory {path}: {e}")
+                if chunk:
+                    yield chunk
+                    
         def _process_chunk(paths: List[Path]) -> List[SearchResult]:
+            """Process a chunk of paths"""
             results = []
+            
             for path in paths:
                 try:
-                    if self._should_process(path, len(path.parents)):
-                        if self._matches_pattern(path):
-                            results.append(self._create_result(path))
+                    if not self._should_process(path, len(path.parents)):
+                        continue
+                        
+                    if self._matches_pattern(path):
+                        result = self._create_result(path)
+                        results.append(result)
+                        
                 except Exception as e:
-                    if self.verbose:
-                        logging.warning(f"Error processing path {path}: {e}")
+                    logging.debug(f"Error processing path {path}: {e}")
+                    continue
+                    
             return results
-
+            
         try:
-            with self._get_executor() as executor:
-                futures = []
-                pending_results = []
-
-                # Process chunks until we have enough results
-                for chunk in _chunk_walker(self.root_path):
-                    if self.max_results and result_count >= self.max_results:
-                        break
-
-                    future = executor.submit(_process_chunk, chunk)
-                    futures.append(future)
-
-                    # Check completed futures
-                    completed = []
-                    for future in futures:
-                        if future.done():
-                            completed.append(future)
-                            try:
-                                results = future.result()
-                                for result in results:
-                                    if self.max_results and result_count >= self.max_results:
-                                        break
-                                    result_count += 1
-                                    self.stats.matches_found += 1
-                                    yield result
-                            except Exception as e:
-                                if self.verbose:
-                                    logging.warning(f"Error processing chunk: {e}")
-                                self.stats.errors_count += 1
-
-                    # Remove processed futures
-                    for future in completed:
-                        futures.remove(future)
-
-                # Process remaining futures
-                for future in futures:
-                    try:
-                        results = future.result()
-                        for result in results:
-                            if self.max_results and result_count >= self.max_results:
-                                break
-                            result_count += 1
-                            self.stats.matches_found += 1
-                            yield result
-                    except Exception as e:
-                        if self.verbose:
-                            logging.warning(f"Error processing chunk: {e}")
-                        self.stats.errors_count += 1
-
+            futures = []
+            
+            # Process chunks in parallel
+            for chunk in _get_directory_chunks(self.root_path, self.max_depth):
+                if self.max_results and result_count >= self.max_results:
+                    break
+                    
+                future = self.executor.submit(_process_chunk, chunk)
+                futures.append(future)
+                
+            # Collect results from futures
+            for future in futures:
+                try:
+                    chunk_results = future.result(timeout=30)  # 30 second timeout
+                    for result in chunk_results:
+                        if self.max_results and result_count >= self.max_results:
+                            return
+                        yield result
+                        result_count += 1
+                except Exception as e:
+                    logging.error(f"Error processing chunk: {e}")
+                    continue
+                    
         finally:
-            if self.verbose:
-                self._log_stats()
-
-    def _log_stats(self):
-        """Log search statistics"""
-        logging.info(f"Search completed:")
-        logging.info(f"Total items scanned: {self.stats.total_scanned}")
-        logging.info(f"Matches found: {self.stats.matches_found}")
-        logging.info(f"Errors encountered: {self.stats.errors_count}")
-        logging.info(f"Items skipped: {self.stats.skipped_count}")
+            # Ensure cleanup
+            if self.executor:
+                try:
+                    self.executor.shutdown(wait=True)
+                except Exception as e:
+                    logging.error(f"Error shutting down executor: {e}")
+                finally:
+                    self.executor = None
+                    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with cleanup"""
+        if self.executor:
+            try:
+                self.executor.shutdown(wait=True)
+            except Exception as e:
+                logging.error(f"Error in cleanup: {e}")
+            finally:
+                self.executor = None
