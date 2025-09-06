@@ -1,5 +1,9 @@
 # DLens - Enhanced Directory Mapping Tool
 
+[![PyPI version](https://badge.fury.io/py/dlens.svg)](https://badge.fury.io/py/dlens)
+[![Downloads](https://pepy.tech/badge/dlens)](https://pepy.tech/project/dlens)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A powerful command-line tool for visualizing and analyzing directory structures with rich formatting, search capabilities, and multiple export formats.
 
 ## Features
